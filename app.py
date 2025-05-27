@@ -16,16 +16,24 @@ from collections import defaultdict
 import threading
 
 app = Flask(__name__)
+
+# Configurações Railway-específicas
 app.secret_key = os.environ.get('SECRET_KEY', 'lidia-ipt-secret-key-2024-enhanced')
 
-# Configurações Melhoradas
-ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
-INITIAL_ADMIN = 'robsonss@ipt.br'  # Administrador inicial do sistema
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
-MAX_REQUESTS_PER_HOUR = 100
-MAX_REQUESTS_PER_MINUTE = 20
+# Railway detecta a porta automaticamente
+PORT = int(os.environ.get('PORT', 5000))
 
-# Cache simples em memória para performance
+# Configurações adaptadas para Railway
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+INITIAL_ADMIN = os.environ.get('INITIAL_ADMIN', 'robsonss@ipt.br')
+MAX_FILE_SIZE = int(os.environ.get('MAX_FILE_SIZE', 10 * 1024 * 1024))
+MAX_REQUESTS_PER_HOUR = int(os.environ.get('MAX_REQUESTS_PER_HOUR', 100))
+MAX_REQUESTS_PER_MINUTE = int(os.environ.get('MAX_REQUESTS_PER_MINUTE', 20))
+
+# Detectar se estamos no Railway
+IS_RAILWAY = os.environ.get('RAILWAY_ENVIRONMENT') is not None
+
+# Cache simples em memória (Railway friendly)
 class SimpleCache:
     def __init__(self):
         self.cache = {}
@@ -47,10 +55,9 @@ class SimpleCache:
             self.cache[key] = value
             self.timestamps[key] = time.time()
 
-# Cache global
 cache = SimpleCache()
 
-# Rate limiting simples
+# Rate limiting Railway-compatible
 class RateLimiter:
     def __init__(self):
         self.requests = defaultdict(list)
@@ -178,22 +185,36 @@ class SecurityManager:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
-            # Tabela de conversas com mais detalhes
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS conversation_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT,
-                    chat_id TEXT,
-                    question TEXT,
-                    response TEXT,
-                    timestamp DATETIME,
-                    session_id TEXT,
-                    cost REAL,
-                    document_context TEXT,
-                    processing_time REAL,
-                    ip_address TEXT
-                )
-            ''')
+            # Verificar se banco já existe (migração)
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            existing_tables = [row[0] for row in cursor.fetchall()]
+            
+            print(f"📊 Tabelas existentes: {existing_tables}")
+            
+            # Tabela de conversas com migração automática
+            if 'conversation_logs' not in existing_tables:
+                cursor.execute('''
+                    CREATE TABLE conversation_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT,
+                        chat_id TEXT,
+                        question TEXT,
+                        response TEXT,
+                        timestamp DATETIME,
+                        session_id TEXT,
+                        cost REAL,
+                        document_context TEXT,
+                        processing_time REAL,
+                        ip_address TEXT
+                    )
+                ''')
+                print("✅ Tabela conversation_logs criada")
+            else:
+                # Migrar tabela existente - adicionar novas colunas se necessário
+                self.migrate_table_columns(cursor, 'conversation_logs', [
+                    ('processing_time', 'REAL'),
+                    ('ip_address', 'TEXT')
+                ])
             
             # Tabela de chats melhorada
             cursor.execute('''
@@ -210,6 +231,12 @@ class SecurityManager:
                     total_cost REAL DEFAULT 0
                 )
             ''')
+            
+            # Migrar colunas se necessário
+            self.migrate_table_columns(cursor, 'chats', [
+                ('message_count', 'INTEGER DEFAULT 0'),
+                ('total_cost', 'REAL DEFAULT 0')
+            ])
             
             # Tabela de acessos melhorada
             cursor.execute('''
@@ -236,7 +263,7 @@ class SecurityManager:
                     chat_id TEXT,
                     file_content TEXT,
                     file_hash TEXT,
-                    processing_status TEXT
+                    processing_status TEXT DEFAULT 'processed'
                 )
             ''')
             
@@ -270,11 +297,27 @@ class SecurityManager:
                     INSERT INTO admin_users (email, granted_by, granted_at, is_active, permissions)
                     VALUES (?, 'SYSTEM', ?, 1, 'full')
                 ''', (INITIAL_ADMIN, datetime.now()))
+                print(f"✅ Admin inicial criado: {INITIAL_ADMIN}")
             
             conn.commit()
             conn.close()
+            print("✅ Banco de dados inicializado/migrado com sucesso")
+            
         except Exception as e:
-            print(f"Erro ao inicializar banco: {e}")
+            print(f"❌ Erro ao inicializar banco: {e}")
+    
+    def migrate_table_columns(self, cursor, table_name, columns):
+        """Adiciona colunas se não existirem"""
+        try:
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            existing_columns = [row[1] for row in cursor.fetchall()]
+            
+            for column_name, column_def in columns:
+                if column_name not in existing_columns:
+                    cursor.execute(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def}')
+                    print(f"✅ Coluna {column_name} adicionada à {table_name}")
+        except Exception as e:
+            print(f"⚠️ Erro na migração de {table_name}: {e}")
     
     def validate_ipt_email(self, email):
         if not email:
@@ -289,27 +332,7 @@ class SecurityManager:
         if len(email.split('@')[0]) < 3:
             return False, "Email inválido"
         
-        # Verificar se não está em lista de bloqueados (futura funcionalidade)
-        blocked_emails = self.get_blocked_emails()
-        if email in blocked_emails:
-            return False, "Acesso negado"
-        
         return True, "Email válido"
-    
-    def get_blocked_emails(self):
-        """Retorna lista de emails bloqueados"""
-        try:
-            conn = sqlite3.connect('lidia_security.db')
-            cursor = conn.cursor()
-            cursor.execute("SELECT value FROM system_config WHERE key = 'blocked_emails'")
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result:
-                return json.loads(result[0])
-            return []
-        except:
-            return []
     
     def is_admin(self, email):
         """Verifica se email é administrador ativo"""
@@ -329,24 +352,6 @@ class SecurityManager:
         except:
             return False
     
-    def get_admin_permissions(self, email):
-        """Retorna permissões do administrador"""
-        try:
-            conn = sqlite3.connect('lidia_security.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                SELECT permissions FROM admin_users 
-                WHERE email = ? AND is_active = 1
-            ''', (email,))
-            
-            result = cursor.fetchone()
-            conn.close()
-            
-            return result[0] if result else None
-        except:
-            return None
-    
     def add_admin(self, new_admin_email, granted_by_email, permissions='full'):
         """Adiciona novo administrador"""
         try:
@@ -361,37 +366,9 @@ class SecurityManager:
             
             conn.commit()
             conn.close()
-            
-            # Log da ação
-            self.log_admin_action(granted_by_email, f"Adicionou admin: {new_admin_email}")
             return True
         except Exception as e:
             print(f"Erro ao adicionar admin: {e}")
-            return False
-    
-    def remove_admin(self, admin_email, removed_by_email):
-        """Remove administrador"""
-        if admin_email == INITIAL_ADMIN:
-            return False  # Não pode remover admin inicial
-        
-        try:
-            conn = sqlite3.connect('lidia_security.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                UPDATE admin_users 
-                SET is_active = 0
-                WHERE email = ?
-            ''', (admin_email,))
-            
-            conn.commit()
-            conn.close()
-            
-            # Log da ação
-            self.log_admin_action(removed_by_email, f"Removeu admin: {admin_email}")
-            return True
-        except Exception as e:
-            print(f"Erro ao remover admin: {e}")
             return False
     
     def get_all_admins(self):
@@ -419,30 +396,6 @@ class SecurityManager:
         except:
             return []
     
-    def log_admin_action(self, admin_email, action):
-        """Log de ações administrativas"""
-        try:
-            conn = sqlite3.connect('lidia_security.db')
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                INSERT INTO access_logs 
-                (email, ip_address, timestamp, action, success, details)
-                VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                admin_email,
-                request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr) if request else 'system',
-                datetime.now(),
-                'admin_action',
-                True,
-                action
-            ))
-            
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"Erro ao registrar ação admin: {e}")
-    
     def log_conversation(self, email, chat_id, question, response, cost=0.003, document_context="", processing_time=0):
         try:
             conn = sqlite3.connect('lidia_security.db')
@@ -460,7 +413,7 @@ class SecurityManager:
                 email,
                 chat_id,
                 question,
-                response[:2000],  # Aumentar limite
+                response[:2000],
                 datetime.now(),
                 session.get('session_id', 'unknown'),
                 cost,
@@ -516,7 +469,7 @@ class SecurityManager:
                 len(file_content),
                 datetime.now(),
                 chat_id,
-                extracted_text[:10000],  # Aumentar limite
+                extracted_text[:10000],
                 file_hash,
                 'processed'
             ))
@@ -579,8 +532,8 @@ class SecurityManager:
                 'updated_at': chat[2],
                 'has_document': bool(chat[3]),
                 'document_name': chat[4],
-                'message_count': chat[5],
-                'total_cost': chat[6]
+                'message_count': chat[5] or 0,
+                'total_cost': chat[6] or 0
             } for chat in chats]
         except:
             return []
@@ -618,32 +571,6 @@ class SecurityManager:
             return result
         except:
             return []
-    
-    def log_access(self, email, ip_address, action="login", success=True, details=""):
-        try:
-            conn = sqlite3.connect('lidia_security.db')
-            cursor = conn.cursor()
-            
-            user_agent = request.headers.get('User-Agent', '') if request else ''
-            
-            cursor.execute('''
-                INSERT INTO access_logs 
-                (email, ip_address, timestamp, action, success, user_agent, details)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                email,
-                ip_address,
-                datetime.now(),
-                action,
-                success,
-                user_agent[:200],  # Limitar tamanho
-                details
-            ))
-            
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            print(f"Erro ao registrar acesso: {e}")
     
     def get_system_stats(self):
         """Retorna estatísticas do sistema para o painel admin"""
@@ -782,7 +709,7 @@ Responda de forma clara, objetiva e profissional. Se um documento foi enviado, a
         try:
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=2000,  # Aumentar limite
+                max_tokens=2000,
                 messages=[{"role": "user", "content": prompt}]
             )
             
@@ -827,7 +754,7 @@ Responda de forma clara, objetiva e profissional. Se um documento foi enviado, a
 security = SecurityManager()
 assistant = LIDIAAssistant()
 
-# Decorador para verificar autenticação
+# Decoradores
 def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -836,7 +763,6 @@ def require_auth(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Decorador para verificar se é admin
 def require_admin(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -847,7 +773,6 @@ def require_admin(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# Decorador para rate limiting
 def rate_limit(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -877,7 +802,7 @@ def get_current_costs():
         
         fixed_costs = 100
         total_costs = fixed_costs + actual_costs
-        budget_used = (total_costs / 500) * 100  # Orçamento de R$ 500
+        budget_used = (total_costs / 500) * 100
         
         conn.close()
         
@@ -897,6 +822,7 @@ def get_current_costs():
             'budget_used': 20
         }
 
+# Rotas
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -919,9 +845,6 @@ def login():
     is_valid, message = security.validate_ipt_email(email)
     
     if is_valid:
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        security.log_access(email, client_ip, "login", True)
-        
         is_admin = security.is_admin(email)
         
         session['authenticated'] = True
@@ -937,9 +860,6 @@ def login():
             'is_admin': is_admin
         })
     else:
-        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        security.log_access(email, client_ip, "login_failed", False)
-        
         return jsonify({
             'success': False,
             'message': message
@@ -974,7 +894,7 @@ def chat():
         )
         
         # Calcular custo estimado
-        estimated_cost = len(message + response) * 0.000001  # Estimativa baseada em tokens
+        estimated_cost = len(message + response) * 0.000001
         
         security.log_conversation(
             session['user_email'], 
@@ -1062,8 +982,6 @@ def costs():
     costs_data = get_current_costs()
     return jsonify(costs_data)
 
-# Novas rotas para o painel administrativo
-
 @app.route('/api/admin/stats')
 @require_admin
 def admin_stats():
@@ -1076,43 +994,6 @@ def admin_stats():
         'costs': costs,
         'generated_at': datetime.now().isoformat()
     })
-
-@app.route('/api/admin/users')
-@require_admin
-def admin_users():
-    """Lista todos os usuários do sistema"""
-    try:
-        conn = sqlite3.connect('lidia_security.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                email,
-                COUNT(DISTINCT chat_id) as total_chats,
-                COUNT(*) as total_messages,
-                SUM(cost) as total_cost,
-                MAX(timestamp) as last_activity,
-                MIN(timestamp) as first_activity
-            FROM conversation_logs 
-            GROUP BY email
-            ORDER BY total_messages DESC
-        ''')
-        
-        users = []
-        for row in cursor.fetchall():
-            users.append({
-                'email': row[0],
-                'total_chats': row[1],
-                'total_messages': row[2],
-                'total_cost': row[3] if row[3] else 0,
-                'last_activity': row[4],
-                'first_activity': row[5]
-            })
-        
-        conn.close()
-        return jsonify(users)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/admins')
 @require_admin
@@ -1142,124 +1023,8 @@ def add_admin():
     else:
         return jsonify({'error': 'Erro ao adicionar administrador'}), 500
 
-@app.route('/api/admin/admins/<admin_email>', methods=['DELETE'])
-@require_admin
-def remove_admin(admin_email):
-    """Remove administrador"""
-    success = security.remove_admin(admin_email, session['user_email'])
-    
-    if success:
-        return jsonify({'message': f'Administrador {admin_email} removido com sucesso'})
-    else:
-        return jsonify({'error': 'Erro ao remover administrador ou admin não pode ser removido'}), 400
-
-@app.route('/api/admin/logs')
-@require_admin
-def admin_logs():
-    """Retorna logs de acesso e atividades"""
-    try:
-        conn = sqlite3.connect('lidia_security.db')
-        cursor = conn.cursor()
-        
-        # Logs de acesso recentes
-        cursor.execute('''
-            SELECT email, ip_address, timestamp, action, success, details
-            FROM access_logs 
-            ORDER BY timestamp DESC 
-            LIMIT 100
-        ''')
-        
-        logs = []
-        for row in cursor.fetchall():
-            logs.append({
-                'email': row[0],
-                'ip_address': row[1],
-                'timestamp': row[2],
-                'action': row[3],
-                'success': bool(row[4]),
-                'details': row[5]
-            })
-        
-        conn.close()
-        return jsonify(logs)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/admin/documents')
-@require_admin
-def admin_documents():
-    """Lista todos os documentos enviados"""
-    try:
-        conn = sqlite3.connect('lidia_security.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                email, filename, file_size, upload_time, 
-                chat_id, file_hash, processing_status
-            FROM file_uploads 
-            ORDER BY upload_time DESC 
-            LIMIT 200
-        ''')
-        
-        documents = []
-        for row in cursor.fetchall():
-            documents.append({
-                'email': row[0],
-                'filename': row[1],
-                'file_size': row[2],
-                'upload_time': row[3],
-                'chat_id': row[4],
-                'file_hash': row[5],
-                'processing_status': row[6]
-            })
-        
-        conn.close()
-        return jsonify(documents)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/admin/conversations')
-@require_admin
-def admin_conversations():
-    """Lista conversas recentes para monitoramento"""
-    try:
-        conn = sqlite3.connect('lidia_security.db')
-        cursor = conn.cursor()
-        
-        cursor.execute('''
-            SELECT 
-                email, chat_id, question, response, timestamp, 
-                cost, processing_time, ip_address
-            FROM conversation_logs 
-            ORDER BY timestamp DESC 
-            LIMIT 100
-        ''')
-        
-        conversations = []
-        for row in cursor.fetchall():
-            conversations.append({
-                'email': row[0],
-                'chat_id': row[1],
-                'question': row[2][:100] + "..." if len(row[2]) > 100 else row[2],
-                'response': row[3][:100] + "..." if len(row[3]) > 100 else row[3],
-                'timestamp': row[4],
-                'cost': row[5],
-                'processing_time': row[6],
-                'ip_address': row[7]
-            })
-        
-        conn.close()
-        return jsonify(conversations)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/logout', methods=['POST'])
 def logout():
-    if session.get('authenticated'):
-        security.log_access(session['user_email'], 
-                          request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr),
-                          "logout", True)
     session.clear()
     return jsonify({'success': True})
 
@@ -1279,9 +1044,46 @@ def health():
     return jsonify({
         'status': 'healthy', 
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0'
+        'version': '2.0-railway',
+        'environment': 'railway' if IS_RAILWAY else 'local'
     })
 
+@app.route('/migration-status')
+def migration_status():
+    """Endpoint para verificar status da migração"""
+    try:
+        conn = sqlite3.connect('lidia_security.db')
+        cursor = conn.cursor()
+        
+        # Verificar tabelas
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        # Contar registros
+        stats = {}
+        for table in tables:
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            stats[table] = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return jsonify({
+            'migration_status': 'success',
+            'tables': tables,
+            'record_counts': stats,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'migration_status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    print(f"🚀 Iniciando LIDIA v2.0 {'no Railway' if IS_RAILWAY else 'localmente'}")
+    print(f"📊 Porta: {PORT}")
+    print(f"🔑 Admin inicial: {INITIAL_ADMIN}")
+    
+    app.run(host='0.0.0.0', port=PORT, debug=False)
