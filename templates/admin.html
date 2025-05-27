@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LIDIA - Painel Administrativo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .admin-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .admin-header {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .admin-title {
+            color: #4f46e5;
+            font-size: 2.5rem;
+            font-weight: 700;
+        }
+
+        .admin-subtitle {
+            color: #6b7280;
+            font-size: 1.1rem;
+            margin-top: 5px;
+        }
+
+        .admin-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #4f46e5;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .dashboard-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f3f4f6;
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #374151;
+        }
+
+        .card-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #4f46e5;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 15px 0;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            transition: width 0.3s ease;
+        }
+
+        .table-container {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .table th {
+            background: #f8fafc;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #374151;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .table td {
+            padding: 15px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .table tr:hover {
+            background: #f8fafc;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-active {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-inactive {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-success {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .tab-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .tab-header {
+            display: flex;
+            border-bottom: 2px solid #e5e7eb;
+        }
+
+        .tab-button {
+            padding: 15px 25px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            color: #6b7280;
+            transition: all 0.3s ease;
+        }
+
+        .tab-button.active {
+            color: #4f46e5;
+            border-bottom: 3px solid #4f46e5;
+        }
+
+        .tab-content {
+            padding: 25px;
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4f46e5;
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border: 1px solid #fecaca;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #6b7280;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-top: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .admin-header {
+                flex-direction: column;
+                text-align: center;
+                gap: 20px;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tab-header {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Header -->
+        <div class="admin-header">
+            <div>
+                <h1 class="admin-title">🚀 LIDIA Admin</h1>
+                <p class="admin-subtitle">Painel de Administração do Sistema</p>
+            </div>
+            <div class="admin-actions">
+                <a href="/" class="btn btn-secondary">Voltar ao Chat</a>
+                <button onclick="logout()" class="btn btn-danger">Sair</button>
+            </div>
+        </div>
+
+        <!-- Dashboard Cards -->
+        <div class="dashboard-grid">
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3 class="card-title">📊 Estatísticas Gerais</h3>
+                </div>
+                <div id="general-stats">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando estatísticas...
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3 class="card-title">💰 Custos do Mês</h3>
+                </div>
+                <div id="cost-stats">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando custos...
+                    </div>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3 class="card-title">📈 Atividade Recente</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+
+            <div class="dashboard-card">
+                <div class="card-header">
+                    <h3 class="card-title">👥 Top Usuários</h3>
+                </div>
+                <div id="top-users">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando usuários...
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs Container -->
+        <div class="tab-container">
+            <div class="tab-header">
+                <button class="tab-button active" onclick="showTab('users')">👥 Usuários</button>
+                <button class="tab-button" onclick="showTab('admins')">🔑 Administradores</button>
+                <button class="tab-button" onclick="showTab('documents')">📄 Documentos</button>
+                <button class="tab-button" onclick="showTab('conversations')">💬 Conversas</button>
+                <button class="tab-button" onclick="showTab('logs')">📋 Logs</button>
+            </div>
+
+            <!-- Users Tab -->
+            <div id="users-tab" class="tab-content active">
+                <h3 class="card-title">Lista de Usuários do Sistema</h3>
+                <div id="users-table">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando usuários...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admins Tab -->
+            <div id="admins-tab" class="tab-content">
+                <h3 class="card-title">Gerenciamento de Administradores</h3>
+                
+                <div id="admin-alerts"></div>
+                
+                <div style="margin-bottom: 30px;">
+                    <h4 style="margin-bottom: 15px;">Adicionar Novo Administrador</h4>
+                    <div style="display: flex; gap: 15px; align-items: end;">
+                        <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                            <label class="form-label">Email do novo administrador</label>
+                            <input type="email" id="new-admin-email" class="form-input" placeholder="exemplo@ipt.br">
+                        </div>
+                        <button onclick="addAdmin()" class="btn btn-primary">Adicionar Admin</button>
+                    </div>
+                </div>
+
+                <div id="admins-table">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando administradores...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Documents Tab -->
+            <div id="documents-tab" class="tab-content">
+                <h3 class="card-title">Documentos Enviados</h3>
+                <div id="documents-table">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando documentos...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Conversations Tab -->
+            <div id="conversations-tab" class="tab-content">
+                <h3 class="card-title">Conversas Recentes</h3>
+                <div id="conversations-table">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando conversas...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Logs Tab -->
+            <div id="logs-tab" class="tab-content">
+                <h3 class="card-title">Logs de Acesso</h3>
+                <div id="logs-table">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        Carregando logs...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Variáveis globais
+        let activityChart = null;
+
+        // Função para mostrar/esconder tabs
+        function showTab(tabName) {
+            // Remover classe active de todos os botões e conteúdos
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+            // Adicionar classe active ao botão e conteúdo selecionado
+            event.target.classList.add('active');
+            document.getElementById(tabName + '-tab').classList.add('active');
+
+            // Carregar dados da tab se necessário
+            if (tabName === 'users') loadUsers();
+            if (tabName === 'admins') loadAdmins();
+            if (tabName === 'documents') loadDocuments();
+            if (tabName === 'conversations') loadConversations();
+            if (tabName === 'logs') loadLogs();
+        }
+
+        // Função para logout
+        function logout() {
+            if (confirm('Tem certeza que deseja sair?')) {
+                fetch('/api/logout', { method: 'POST' })
+                    .then(() => {
+                        window.location.href = '/';
+                    });
+            }
+        }
+
+        // Função para mostrar alert
+        function showAlert(message, type = 'success', container = 'admin-alerts') {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.textContent = message;
+            
+            const container_el = document.getElementById(container);
+            container_el.innerHTML = '';
+            container_el.appendChild(alertDiv);
+            
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+
+        // Função para formatar data
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleString('pt-BR');
+        }
+
+        // Função para formatar moeda
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(value);
+        }
+
+        // Função para formatar bytes
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Carregar estatísticas gerais
+        function loadStats() {
+            fetch('/api/admin/stats')
+                .then(response => response.json())
+                .then(data => {
+                    // Estatísticas gerais
+                    const stats = data.stats;
+                    document.getElementById('general-stats').innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                            <div>
+                                <div class="stat-number">${stats.total_users || 0}</div>
+                                <div class="stat-label">Usuários Totais</div>
+                            </div>
+                            <div>
+                                <div class="stat-number">${stats.active_users_30d || 0}</div>
+                                <div class="stat-label">Ativos (30 dias)</div>
+                            </div>
+                            <div>
+                                <div class="stat-number">${stats.total_conversations || 0}</div>
+                                <div class="stat-label">Conversas Totais</div>
+                            </div>
+                            <div>
+                                <div class="stat-number">${stats.conversations_today || 0}</div>
+                                <div class="stat-label">Hoje</div>
+                            </div>
+                        </div>
+                    `;
+
+                    // Custos
+                    const costs = data.costs;
+                    document.getElementById('cost-stats').innerHTML = `
+                        <div>
+                            <div class="stat-number">${formatCurrency(costs.total)}</div>
+                            <div class="stat-label">Custo Total do Mês</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${costs.budget_used}%"></div>
+                            </div>
+                            <div style="font-size: 0.9rem; color: #6b7280; margin-top: 5px;">
+                                ${costs.budget_used.toFixed(1)}% do orçamento usado
+                            </div>
+                        </div>
+                        <div style="margin-top: 20px;">
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; font-size: 0.9rem;">
+                                <div>Fixo: ${formatCurrency(costs.fixed)}</div>
+                                <div>Variável: ${formatCurrency(costs.variable)}</div>
+                            </div>
+                        </div>
+                    `;
+
+                    // Top usuários
+                    const topUsersHtml = stats.top_users.map(user => `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
+                            <span style="color: #374151;">${user.email}</span>
+                            <span style="background: #e0e7ff; color: #3730a3; padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: 600;">
+                                ${user.count} msgs
+                            </span>
+                        </div>
+                    `).join('');
+
+                    document.getElementById('top-users').innerHTML = topUsersHtml || '<p style="text-align: center; color: #6b7280;">Nenhum usuário encontrado</p>';
+
+                    // Gráfico de atividade
+                    createActivityChart(stats.activity_by_day || []);
+                })
+                .catch(error => {
+                    console.error('Erro ao carregar estatísticas:', error);
+                    document.getElementById('general-stats').innerHTML = '<p style="color: #ef4444;">Erro ao carregar estatísticas</p>';
+                    document.getElementById('cost-stats').innerHTML = '<p style="color: #ef4444;">Erro ao carregar custos</p>';
+                });
+        }
+
+        // Criar gráfico de atividade
+        function createActivityChart(activityData) {
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            
+            if (activityChart) {
+                activityChart.destroy();
+            }
+
+            activityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: activityData.map(item => {
+                        const date = new Date(item.date);
+                        return date.toLocaleDateString('pt-BR', { weekday: 'short', day: 'numeric' });
+                    }),
+                    datasets: [{
+                        label: 'Conversas por Dia',
+                        data: activityData.map(item => item.count),
+                        borderColor: '#4f46e5',
+                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Carregar usuários
+        function loadUsers() {
+            fetch('/api/admin/users')
+                .then(response => response.json())
+                .then(users => {
+                    const tableHtml = `
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Total Chats</th>
+                                    <th>Total Mensagens</th>
+                                    <th>Custo Total</th>
+                                    <th>Última Atividade</th>
+                                    <th>Primeira Atividade</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${users.map(user => `
+                                    <tr>
+                                        <td><strong>${user.email}</strong></td>
+                                        <td>${user.total_chats}</td>
+                                        <td>${user.total_messages}</td>
+                                        <td>${formatCurrency(user.total_cost)}</td>
+                                        <td>${formatDate(user.last_activity)}</td>
+                                        <td>${formatDate(user.first_activity)}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    document.getElementById('users-table').innerHTML = tableHtml;
+                })
+                .catch(error => {
+                    document.getElementById('users-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar usuários</p>';
+                });
+        }
+
+        // Carregar administradores
+        function loadAdmins() {
+            fetch('/api/admin/admins')
+                .then(response => response.json())
+                .then(admins => {
+                    const tableHtml = `
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Adicionado por</th>
+                                    <th>Data</th>
+                                    <th>Status</th>
+                                    <th>Permissões</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${admins.map(admin => `
+                                    <tr>
+                                        <td><strong>${admin.email}</strong></td>
+                                        <td>${admin.granted_by}</td>
+                                        <td>${formatDate(admin.granted_at)}</td>
+                                        <td>
+                                            <span class="status-badge ${admin.is_active ? 'status-active' : 'status-inactive'}">
+                                                ${admin.is_active ? 'Ativo' : 'Inativo'}
+                                            </span>
+                                        </td>
+                                        <td>${admin.permissions}</td>
+                                        <td>
+                                            ${admin.email !== '${getCurrentUserEmail()}' && admin.email !== 'robsonss@ipt.br' ? 
+                                                `<button onclick="removeAdmin('${admin.email}')" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.8rem;">Remover</button>` : 
+                                                '<span style="color: #6b7280;">-</span>'
+                                            }
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    document.getElementById('admins-table').innerHTML = tableHtml;
+                })
+                .catch(error => {
+                    document.getElementById('admins-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar administradores</p>';
+                });
+        }
+
+        // Adicionar administrador
+        function addAdmin() {
+            const email = document.getElementById('new-admin-email').value.trim();
+            
+            if (!email) {
+                showAlert('Por favor, insira um email', 'error');
+                return;
+            }
+
+            if (!email.endsWith('@ipt.br')) {
+                showAlert('Email deve ser do domínio @ipt.br', 'error');
+                return;
+            }
+
+            fetch('/api/admin/admins', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ email: email })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    showAlert(data.message, 'success');
+                    document.getElementById('new-admin-email').value = '';
+                    loadAdmins();
+                } else {
+                    showAlert(data.error || 'Erro ao adicionar administrador', 'error');
+                }
+            })
+            .catch(error => {
+                showAlert('Erro ao adicionar administrador', 'error');
+            });
+        }
+
+        // Remover administrador
+        function removeAdmin(email) {
+            if (!confirm(`Tem certeza que deseja remover o administrador ${email}?`)) {
+                return;
+            }
+
+            fetch(`/api/admin/admins/${encodeURIComponent(email)}`, {
+                method: 'DELETE'
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.message) {
+                    showAlert(data.message, 'success');
+                    loadAdmins();
+                } else {
+                    showAlert(data.error || 'Erro ao remover administrador', 'error');
+                }
+            })
+            .catch(error => {
+                showAlert('Erro ao remover administrador', 'error');
+            });
+        }
+
+        // Carregar documentos
+        function loadDocuments() {
+            fetch('/api/admin/documents')
+                .then(response => response.json())
+                .then(documents => {
+                    const tableHtml = `
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Nome do Arquivo</th>
+                                    <th>Tamanho</th>
+                                    <th>Upload</th>
+                                    <th>Chat ID</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${documents.map(doc => `
+                                    <tr>
+                                        <td>${doc.email}</td>
+                                        <td><strong>${doc.filename}</strong></td>
+                                        <td>${formatBytes(doc.file_size)}</td>
+                                        <td>${formatDate(doc.upload_time)}</td>
+                                        <td><code style="font-size: 0.8rem;">${doc.chat_id.substring(0, 8)}...</code></td>
+                                        <td>
+                                            <span class="status-badge status-success">
+                                                ${doc.processing_status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    document.getElementById('documents-table').innerHTML = tableHtml;
+                })
+                .catch(error => {
+                    document.getElementById('documents-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar documentos</p>';
+                });
+        }
+
+        // Carregar conversas
+        function loadConversations() {
+            fetch('/api/admin/conversations')
+                .then(response => response.json())
+                .then(conversations => {
+                    const tableHtml = `
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>Pergunta</th>
+                                    <th>Resposta</th>
+                                    <th>Data/Hora</th>
+                                    <th>Custo</th>
+                                    <th>Tempo (s)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${conversations.map(conv => `
+                                    <tr>
+                                        <td>${conv.email}</td>
+                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${conv.question}">${conv.question}</td>
+                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${conv.response}">${conv.response}</td>
+                                        <td>${formatDate(conv.timestamp)}</td>
+                                        <td>${formatCurrency(conv.cost)}</td>
+                                        <td>${conv.processing_time ? conv.processing_time.toFixed(2) : '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    document.getElementById('conversations-table').innerHTML = tableHtml;
+                })
+                .catch(error => {
+                    document.getElementById('conversations-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar conversas</p>';
+                });
+        }
+
+        // Carregar logs
+        function loadLogs() {
+            fetch('/api/admin/logs')
+                .then(response => response.json())
+                .then(logs => {
+                    const tableHtml = `
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Usuário</th>
+                                    <th>IP</th>
+                                    <th>Ação</th>
+                                    <th>Status</th>
+                                    <th>Data/Hora</th>
+                                    <th>Detalhes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${logs.map(log => `
+                                    <tr>
+                                        <td>${log.email}</td>
+                                        <td><code>${log.ip_address}</code></td>
+                                        <td>${log.action}</td>
+                                        <td>
+                                            <span class="status-badge ${log.success ? 'status-success' : 'status-error'}">
+                                                ${log.success ? 'Sucesso' : 'Erro'}
+                                            </span>
+                                        </td>
+                                        <td>${formatDate(log.timestamp)}</td>
+                                        <td>${log.details || '-'}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    `;
+                    document.getElementById('logs-table').innerHTML = tableHtml;
+                })
+                .catch(error => {
+                    document.getElementById('logs-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar logs</p>';
+                });
+        }
+
+        // Função para obter email do usuário atual
+        function getCurrentUserEmail() {
+            return fetch('/api/user')
+                .then(response => response.json())
+                .then(data => data.email)
+                .catch(() => '');
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            loadStats();
+            loadUsers();
+        });
+
+        // Atualizar dados a cada 30 segundos
+        setInterval(loadStats, 30000);
+    </script>
+</body>
+</html>
