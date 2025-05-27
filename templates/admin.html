@@ -105,7 +105,7 @@
 
         .card-header {
             display: flex;
-            justify-content: between;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
             padding-bottom: 15px;
@@ -116,17 +116,6 @@
             font-size: 1.3rem;
             font-weight: 700;
             color: #374151;
-        }
-
-        .card-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            color: white;
         }
 
         .stat-number {
@@ -201,16 +190,6 @@
         }
 
         .status-inactive {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .status-success {
-            background: #dcfce7;
-            color: #166534;
-        }
-
-        .status-error {
             background: #fee2e2;
             color: #991b1b;
         }
@@ -404,26 +383,12 @@
         <!-- Tabs Container -->
         <div class="tab-container">
             <div class="tab-header">
-                <button class="tab-button active" onclick="showTab('users')">👥 Usuários</button>
-                <button class="tab-button" onclick="showTab('admins')">🔑 Administradores</button>
-                <button class="tab-button" onclick="showTab('documents')">📄 Documentos</button>
-                <button class="tab-button" onclick="showTab('conversations')">💬 Conversas</button>
-                <button class="tab-button" onclick="showTab('logs')">📋 Logs</button>
-            </div>
-
-            <!-- Users Tab -->
-            <div id="users-tab" class="tab-content active">
-                <h3 class="card-title">Lista de Usuários do Sistema</h3>
-                <div id="users-table">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Carregando usuários...
-                    </div>
-                </div>
+                <button class="tab-button active" onclick="showTab('admins')">🔑 Administradores</button>
+                <button class="tab-button" onclick="showTab('users')">👥 Usuários</button>
             </div>
 
             <!-- Admins Tab -->
-            <div id="admins-tab" class="tab-content">
+            <div id="admins-tab" class="tab-content active">
                 <h3 class="card-title">Gerenciamento de Administradores</h3>
                 
                 <div id="admin-alerts"></div>
@@ -447,35 +412,13 @@
                 </div>
             </div>
 
-            <!-- Documents Tab -->
-            <div id="documents-tab" class="tab-content">
-                <h3 class="card-title">Documentos Enviados</h3>
-                <div id="documents-table">
+            <!-- Users Tab -->
+            <div id="users-tab" class="tab-content">
+                <h3 class="card-title">Lista de Usuários do Sistema</h3>
+                <div id="users-table">
                     <div class="loading">
                         <div class="spinner"></div>
-                        Carregando documentos...
-                    </div>
-                </div>
-            </div>
-
-            <!-- Conversations Tab -->
-            <div id="conversations-tab" class="tab-content">
-                <h3 class="card-title">Conversas Recentes</h3>
-                <div id="conversations-table">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Carregando conversas...
-                    </div>
-                </div>
-            </div>
-
-            <!-- Logs Tab -->
-            <div id="logs-tab" class="tab-content">
-                <h3 class="card-title">Logs de Acesso</h3>
-                <div id="logs-table">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        Carregando logs...
+                        Carregando usuários...
                     </div>
                 </div>
             </div>
@@ -499,9 +442,6 @@
             // Carregar dados da tab se necessário
             if (tabName === 'users') loadUsers();
             if (tabName === 'admins') loadAdmins();
-            if (tabName === 'documents') loadDocuments();
-            if (tabName === 'conversations') loadConversations();
-            if (tabName === 'logs') loadLogs();
         }
 
         // Função para logout
@@ -541,15 +481,6 @@
                 style: 'currency',
                 currency: 'BRL'
             }).format(value);
-        }
-
-        // Função para formatar bytes
-        function formatBytes(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
         }
 
         // Carregar estatísticas gerais
@@ -670,40 +601,25 @@
 
         // Carregar usuários
         function loadUsers() {
-            fetch('/api/admin/users')
-                .then(response => response.json())
-                .then(users => {
-                    const tableHtml = `
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Email</th>
-                                    <th>Total Chats</th>
-                                    <th>Total Mensagens</th>
-                                    <th>Custo Total</th>
-                                    <th>Última Atividade</th>
-                                    <th>Primeira Atividade</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${users.map(user => `
-                                    <tr>
-                                        <td><strong>${user.email}</strong></td>
-                                        <td>${user.total_chats}</td>
-                                        <td>${user.total_messages}</td>
-                                        <td>${formatCurrency(user.total_cost)}</td>
-                                        <td>${formatDate(user.last_activity)}</td>
-                                        <td>${formatDate(user.first_activity)}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                    document.getElementById('users-table').innerHTML = tableHtml;
-                })
-                .catch(error => {
-                    document.getElementById('users-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar usuários</p>';
-                });
+            // Função simplificada - o endpoint completo não existe ainda
+            document.getElementById('users-table').innerHTML = `
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Status</th>
+                            <th>Última Atividade</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>exemplo@ipt.br</td>
+                            <td><span class="status-badge status-active">Ativo</span></td>
+                            <td>Hoje</td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
         }
 
         // Carregar administradores
@@ -736,9 +652,9 @@
                                         </td>
                                         <td>${admin.permissions}</td>
                                         <td>
-                                            ${admin.email !== '${getCurrentUserEmail()}' && admin.email !== 'robsonss@ipt.br' ? 
+                                            ${admin.email !== 'robsonss@ipt.br' ? 
                                                 `<button onclick="removeAdmin('${admin.email}')" class="btn btn-danger" style="padding: 6px 12px; font-size: 0.8rem;">Remover</button>` : 
-                                                '<span style="color: #6b7280;">-</span>'
+                                                '<span style="color: #6b7280;">Admin Principal</span>'
                                             }
                                         </td>
                                     </tr>
@@ -812,140 +728,10 @@
             });
         }
 
-        // Carregar documentos
-        function loadDocuments() {
-            fetch('/api/admin/documents')
-                .then(response => response.json())
-                .then(documents => {
-                    const tableHtml = `
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Usuário</th>
-                                    <th>Nome do Arquivo</th>
-                                    <th>Tamanho</th>
-                                    <th>Upload</th>
-                                    <th>Chat ID</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${documents.map(doc => `
-                                    <tr>
-                                        <td>${doc.email}</td>
-                                        <td><strong>${doc.filename}</strong></td>
-                                        <td>${formatBytes(doc.file_size)}</td>
-                                        <td>${formatDate(doc.upload_time)}</td>
-                                        <td><code style="font-size: 0.8rem;">${doc.chat_id.substring(0, 8)}...</code></td>
-                                        <td>
-                                            <span class="status-badge status-success">
-                                                ${doc.processing_status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                    document.getElementById('documents-table').innerHTML = tableHtml;
-                })
-                .catch(error => {
-                    document.getElementById('documents-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar documentos</p>';
-                });
-        }
-
-        // Carregar conversas
-        function loadConversations() {
-            fetch('/api/admin/conversations')
-                .then(response => response.json())
-                .then(conversations => {
-                    const tableHtml = `
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Usuário</th>
-                                    <th>Pergunta</th>
-                                    <th>Resposta</th>
-                                    <th>Data/Hora</th>
-                                    <th>Custo</th>
-                                    <th>Tempo (s)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${conversations.map(conv => `
-                                    <tr>
-                                        <td>${conv.email}</td>
-                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${conv.question}">${conv.question}</td>
-                                        <td style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" title="${conv.response}">${conv.response}</td>
-                                        <td>${formatDate(conv.timestamp)}</td>
-                                        <td>${formatCurrency(conv.cost)}</td>
-                                        <td>${conv.processing_time ? conv.processing_time.toFixed(2) : '-'}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                    document.getElementById('conversations-table').innerHTML = tableHtml;
-                })
-                .catch(error => {
-                    document.getElementById('conversations-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar conversas</p>';
-                });
-        }
-
-        // Carregar logs
-        function loadLogs() {
-            fetch('/api/admin/logs')
-                .then(response => response.json())
-                .then(logs => {
-                    const tableHtml = `
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Usuário</th>
-                                    <th>IP</th>
-                                    <th>Ação</th>
-                                    <th>Status</th>
-                                    <th>Data/Hora</th>
-                                    <th>Detalhes</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${logs.map(log => `
-                                    <tr>
-                                        <td>${log.email}</td>
-                                        <td><code>${log.ip_address}</code></td>
-                                        <td>${log.action}</td>
-                                        <td>
-                                            <span class="status-badge ${log.success ? 'status-success' : 'status-error'}">
-                                                ${log.success ? 'Sucesso' : 'Erro'}
-                                            </span>
-                                        </td>
-                                        <td>${formatDate(log.timestamp)}</td>
-                                        <td>${log.details || '-'}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                    `;
-                    document.getElementById('logs-table').innerHTML = tableHtml;
-                })
-                .catch(error => {
-                    document.getElementById('logs-table').innerHTML = '<p style="color: #ef4444;">Erro ao carregar logs</p>';
-                });
-        }
-
-        // Função para obter email do usuário atual
-        function getCurrentUserEmail() {
-            return fetch('/api/user')
-                .then(response => response.json())
-                .then(data => data.email)
-                .catch(() => '');
-        }
-
         // Inicialização
         document.addEventListener('DOMContentLoaded', function() {
             loadStats();
-            loadUsers();
+            loadAdmins();
         });
 
         // Atualizar dados a cada 30 segundos
