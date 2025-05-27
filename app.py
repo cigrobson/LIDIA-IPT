@@ -1,8 +1,9 @@
-from flask import Flask, render_template, request, jsonify, session
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 import os
 import sqlite3
 from datetime import datetime
 import uuid
+import json
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'lidia-ipt-secret-key-2024')
@@ -20,10 +21,12 @@ class SecurityManager:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
+            # Tabela de conversas com mais detalhes
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS conversation_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     email TEXT,
+                    chat_id TEXT,
                     question TEXT,
                     response TEXT,
                     timestamp DATETIME,
@@ -32,6 +35,19 @@ class SecurityManager:
                 )
             ''')
             
+            # Tabela de chats
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS chats (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id TEXT UNIQUE,
+                    email TEXT,
+                    title TEXT,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+            ''')
+            
+            # Tabela de acessos
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS access_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,6 +56,18 @@ class SecurityManager:
                     timestamp DATETIME,
                     action TEXT,
                     success BOOLEAN
+                )
+            ''')
+            
+            # Tabela de uploads
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS file_uploads (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT,
+                    filename TEXT,
+                    file_size INTEGER,
+                    upload_time DATETIME,
+                    chat_id TEXT
                 )
             ''')
             
@@ -60,17 +88,18 @@ class SecurityManager:
         
         return True, "Email válido"
     
-    def log_conversation(self, email, question, response, cost=0.003):
+    def log_conversation(self, email, chat_id, question, response, cost=0.003):
         try:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
             cursor.execute('''
                 INSERT INTO conversation_logs 
-                (email, question, response, timestamp, session_id, cost)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (email, chat_id, question, response, timestamp, session_id, cost)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
             ''', (
                 email,
+                chat_id,
                 question,
                 response[:1000],
                 datetime.now(),
@@ -78,10 +107,70 @@ class SecurityManager:
                 cost
             ))
             
+            # Atualizar ou criar chat
+            cursor.execute('''
+                INSERT OR REPLACE INTO chats 
+                (chat_id, email, title, created_at, updated_at)
+                VALUES (?, ?, ?, 
+                    COALESCE((SELECT created_at FROM chats WHERE chat_id = ?), ?),
+                    ?)
+            ''', (
+                chat_id,
+                email,
+                question[:50] + "..." if len(question) > 50 else question,
+                chat_id,
+                datetime.now(),
+                datetime.now()
+            ))
+            
             conn.commit()
             conn.close()
         except Exception as e:
             print(f"Erro ao registrar conversa: {e}")
+    
+    def get_user_chats(self, email):
+        try:
+            conn = sqlite3.connect('lidia_security.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT chat_id, title, updated_at 
+                FROM chats 
+                WHERE email = ? 
+                ORDER BY updated_at DESC 
+                LIMIT 20
+            ''', (email,))
+            
+            chats = cursor.fetchall()
+            conn.close()
+            
+            return [{'chat_id': chat[0], 'title': chat[1], 'updated_at': chat[2]} for chat in chats]
+        except:
+            return []
+    
+    def get_chat_messages(self, email, chat_id):
+        try:
+            conn = sqlite3.connect('lidia_security.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT question, response, timestamp 
+                FROM conversation_logs 
+                WHERE email = ? AND chat_id = ? 
+                ORDER BY timestamp ASC
+            ''', (email, chat_id))
+            
+            messages = cursor.fetchall()
+            conn.close()
+            
+            result = []
+            for msg in messages:
+                result.append({'content': msg[0], 'sender': 'user', 'timestamp': msg[2]})
+                result.append({'content': msg[1], 'sender': 'assistant', 'timestamp': msg[2]})
+            
+            return result
+        except:
+            return []
     
     def log_access(self, email, ip_address, action="login", success=True):
         try:
@@ -125,7 +214,6 @@ IMPORTANTE: Apenas responda sobre o que você é se o usuário perguntar especif
 Responda de forma clara, objetiva e profissional."""
     
     def get_client(self):
-        """Inicializa client Anthropic apenas quando necessário"""
         if self.client is None:
             try:
                 import anthropic
@@ -138,12 +226,9 @@ Responda de forma clara, objetiva e profissional."""
         return self.client
     
     def process_query(self, message, user_email=""):
-        """Processa consulta com fallback se API não disponível"""
-        
         client = self.get_client()
         
         if not client:
-            # Fallback: respostas pré-definidas se API não disponível
             return self.get_fallback_response(message)
         
         prompt = f"""{self.ipt_context}
@@ -166,7 +251,6 @@ Responda de forma clara e útil."""
             return self.get_fallback_response(message)
     
     def get_fallback_response(self, message):
-        """Respostas básicas quando API não está disponível"""
         message_lower = message.lower()
         
         if any(word in message_lower for word in ['o que é', 'quem é', 'como funciona', 'lidia']):
@@ -188,7 +272,7 @@ Responda de forma clara e útil."""
 
 # Inicializar componentes
 security = SecurityManager()
-assistant = LIDIAAssistant()  # Sem inicializar API ainda
+assistant = LIDIAAssistant()
 
 def get_current_costs():
     try:
@@ -246,6 +330,8 @@ def login():
         session['is_admin'] = email in ADMIN_USERS
         session['session_id'] = str(uuid.uuid4())
         
+        print(f"Login: {email}, Admin: {session['is_admin']}")  # Debug
+        
         return jsonify({
             'success': True,
             'message': 'Login realizado com sucesso',
@@ -267,26 +353,68 @@ def chat():
     
     data = request.get_json()
     message = data.get('message', '').strip()
+    chat_id = data.get('chat_id', '')
     
     if not message:
         return jsonify({'error': 'Mensagem vazia'}), 400
+    
+    if not chat_id:
+        chat_id = 'chat_' + str(uuid.uuid4())
     
     try:
         response = assistant.process_query(message, session['user_email'])
         
         security.log_conversation(
             session['user_email'], 
+            chat_id,
             message, 
             response
         )
         
         return jsonify({
             'response': response,
+            'chat_id': chat_id,
             'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
         return jsonify({'error': f'Erro interno: {str(e)}'}), 500
+
+@app.route('/api/chats')
+def get_chats():
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Não autenticado'}), 401
+    
+    chats = security.get_user_chats(session['user_email'])
+    return jsonify(chats)
+
+@app.route('/api/chats/<chat_id>')
+def get_chat(chat_id):
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Não autenticado'}), 401
+    
+    messages = security.get_chat_messages(session['user_email'], chat_id)
+    return jsonify(messages)
+
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Não autenticado'}), 401
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'Nenhum arquivo enviado'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
+    
+    # Por enquanto, apenas simular upload
+    return jsonify({
+        'success': True,
+        'filename': file.filename,
+        'size': len(file.read()),
+        'message': f'Arquivo {file.filename} recebido com sucesso! Funcionalidade de processamento será implementada em breve.'
+    })
 
 @app.route('/api/costs')
 def costs():
