@@ -14,9 +14,6 @@ from typing import List, Dict, Any
 import json
 import time
 import requests
-import smtplib
-from email.mime.text import MimeText
-from email.mime.multipart import MimeMultipart
 import sqlite3
 import hashlib
 import base64
