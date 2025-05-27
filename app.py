@@ -1,18 +1,14 @@
 from flask import Flask, render_template, request, jsonify, session
 import os
 import sqlite3
-import hashlib
-from datetime import datetime, timedelta
-import anthropic
-import json
-from pathlib import Path
+from datetime import datetime
 import uuid
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'lidia-ipt-secret-key-2024')
 
 # Configurações
-ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', 'sk-ant-api03-placeholder')
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 ADMIN_USERS = ['robsonss@ipt.br']
 
 class SecurityManager:
@@ -110,9 +106,9 @@ class SecurityManager:
             print(f"Erro ao registrar acesso: {e}")
 
 class LIDIAAssistant:
-    def __init__(self, api_key):
-        self.client = anthropic.Anthropic(api_key=api_key)
+    def __init__(self):
         self.model = "claude-3-haiku-20240307"
+        self.client = None
         
         self.ipt_context = """Você é LIDIA, a Inteligência Artificial do Laboratório de Inovação Digital do Instituto de Pesquisas Tecnológicas (IPT).
 
@@ -128,7 +124,28 @@ IMPORTANTE: Apenas responda sobre o que você é se o usuário perguntar especif
 
 Responda de forma clara, objetiva e profissional."""
     
+    def get_client(self):
+        """Inicializa client Anthropic apenas quando necessário"""
+        if self.client is None:
+            try:
+                import anthropic
+                if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == '':
+                    return None
+                self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            except Exception as e:
+                print(f"Erro ao inicializar Anthropic: {e}")
+                return None
+        return self.client
+    
     def process_query(self, message, user_email=""):
+        """Processa consulta com fallback se API não disponível"""
+        
+        client = self.get_client()
+        
+        if not client:
+            # Fallback: respostas pré-definidas se API não disponível
+            return self.get_fallback_response(message)
+        
         prompt = f"""{self.ipt_context}
 
 PERGUNTA: {message}
@@ -136,21 +153,42 @@ PERGUNTA: {message}
 Responda de forma clara e útil."""
         
         try:
-            response = self.client.messages.create(
+            response = client.messages.create(
                 model=self.model,
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}]
             )
             
-            answer = response.content[0].text
-            return answer
+            return response.content[0].text
             
         except Exception as e:
-            return f"Desculpe, ocorreu um erro ao processar sua solicitação: {str(e)}"
+            print(f"Erro na API Anthropic: {e}")
+            return self.get_fallback_response(message)
+    
+    def get_fallback_response(self, message):
+        """Respostas básicas quando API não está disponível"""
+        message_lower = message.lower()
+        
+        if any(word in message_lower for word in ['o que é', 'quem é', 'como funciona', 'lidia']):
+            return "Entendido, sou a assistente LIDIA do IPT (Instituto de Pesquisas Tecnológicas de São Paulo). Sou uma assistente conversacional criada para apoiar colaboradores do IPT com orientações sobre pesquisa, redação técnica, tecnologias e metodologias. Como posso ajudá-lo hoje?"
+        
+        if any(word in message_lower for word in ['dados', 'análise', 'resultados']):
+            return "Posso ajudá-lo a interpretar dados e discutir abordagens analíticas. Se você compartilhar seus resultados, posso sugerir interpretações e orientar sobre métodos adequados. Que tipo de dados você está analisando?"
+        
+        if any(word in message_lower for word in ['pesquisa', 'metodologia']):
+            return "Posso auxiliá-lo na estruturação de metodologias de pesquisa e organização de ideias. Conte-me sobre seu projeto - qual é o objetivo e que tipo de orientação você precisa?"
+        
+        if any(word in message_lower for word in ['relatório', 'redação', 'documento']):
+            return "Posso ajudá-lo na elaboração de relatórios técnicos e estruturação de documentos. Que tipo de documento você precisa elaborar? Posso sugerir estruturas e orientar sobre boas práticas de redação técnica."
+        
+        if any(word in message_lower for word in ['tecnologia', 'ferramenta', 'software']):
+            return "Posso orientá-lo sobre tecnologias e ferramentas para projetos. Conte-me sobre seu projeto - que tipo de solução você está buscando? Posso sugerir tecnologias adequadas e discutir diferentes abordagens."
+        
+        return "Olá! Sou sua assistente LIDIA do IPT. Posso ajudá-lo com orientações sobre pesquisa, redação técnica, tecnologias e metodologias. Como posso apoiá-lo em seu trabalho hoje? (Nota: Sistema funcionando em modo básico)"
 
 # Inicializar componentes
 security = SecurityManager()
-assistant = LIDIAAssistant(ANTHROPIC_API_KEY)
+assistant = LIDIAAssistant()  # Sem inicializar API ainda
 
 def get_current_costs():
     try:
