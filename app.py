@@ -4,13 +4,61 @@ import sqlite3
 from datetime import datetime
 import uuid
 import json
+import PyPDF2
+import docx
+from werkzeug.utils import secure_filename
+import io
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'lidia-ipt-secret-key-2024')
 
 # Configurações
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
-ADMIN_USERS = ['robsonss@ipt.br']
+ADMIN_USERS = ['robsonss@ipt.br']  # Lista explícita de administradores
+
+class DocumentProcessor:
+    """Processador de documentos"""
+    
+    @staticmethod
+    def extract_text_from_file(file_storage):
+        """Extrai texto de arquivo enviado"""
+        try:
+            filename = file_storage.filename.lower()
+            file_content = file_storage.read()
+            
+            if filename.endswith('.pdf'):
+                return DocumentProcessor.extract_from_pdf(file_content)
+            elif filename.endswith('.docx'):
+                return DocumentProcessor.extract_from_docx(file_content)
+            elif filename.endswith('.txt'):
+                return file_content.decode('utf-8', errors='ignore')
+            else:
+                return "Formato de arquivo não suportado para extração de texto."
+                
+        except Exception as e:
+            return f"Erro ao processar arquivo: {str(e)}"
+    
+    @staticmethod
+    def extract_from_pdf(file_content):
+        """Extrai texto de PDF"""
+        try:
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+            return text if text.strip() else "Não foi possível extrair texto do PDF."
+        except:
+            return "Erro ao processar PDF."
+    
+    @staticmethod
+    def extract_from_docx(file_content):
+        """Extrai texto de DOCX"""
+        try:
+            doc = docx.Document(io.BytesIO(file_content))
+            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+            return text if text.strip() else "Documento DOCX vazio."
+        except:
+            return "Erro ao processar documento Word."
 
 class SecurityManager:
     def __init__(self):
@@ -31,7 +79,8 @@ class SecurityManager:
                     response TEXT,
                     timestamp DATETIME,
                     session_id TEXT,
-                    cost REAL
+                    cost REAL,
+                    document_context TEXT
                 )
             ''')
             
@@ -43,7 +92,9 @@ class SecurityManager:
                     email TEXT,
                     title TEXT,
                     created_at DATETIME,
-                    updated_at DATETIME
+                    updated_at DATETIME,
+                    has_document BOOLEAN DEFAULT 0,
+                    document_name TEXT
                 )
             ''')
             
@@ -67,7 +118,8 @@ class SecurityManager:
                     filename TEXT,
                     file_size INTEGER,
                     upload_time DATETIME,
-                    chat_id TEXT
+                    chat_id TEXT,
+                    file_content TEXT
                 )
             ''')
             
@@ -88,15 +140,21 @@ class SecurityManager:
         
         return True, "Email válido"
     
-    def log_conversation(self, email, chat_id, question, response, cost=0.003):
+    def is_admin(self, email):
+        """Verifica se email é administrador"""
+        result = email in ADMIN_USERS
+        print(f"DEBUG: Verificando admin para {email}: {result}")
+        return result
+    
+    def log_conversation(self, email, chat_id, question, response, cost=0.003, document_context=""):
         try:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
             cursor.execute('''
                 INSERT INTO conversation_logs 
-                (email, chat_id, question, response, timestamp, session_id, cost)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (email, chat_id, question, response, timestamp, session_id, cost, document_context)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 email,
                 chat_id,
@@ -104,23 +162,26 @@ class SecurityManager:
                 response[:1000],
                 datetime.now(),
                 session.get('session_id', 'unknown'),
-                cost
+                cost,
+                document_context[:500] if document_context else ""
             ))
             
             # Atualizar ou criar chat
             cursor.execute('''
                 INSERT OR REPLACE INTO chats 
-                (chat_id, email, title, created_at, updated_at)
+                (chat_id, email, title, created_at, updated_at, has_document, document_name)
                 VALUES (?, ?, ?, 
                     COALESCE((SELECT created_at FROM chats WHERE chat_id = ?), ?),
-                    ?)
+                    ?, ?, ?)
             ''', (
                 chat_id,
                 email,
                 question[:50] + "..." if len(question) > 50 else question,
                 chat_id,
                 datetime.now(),
-                datetime.now()
+                datetime.now(),
+                bool(document_context),
+                ""
             ))
             
             conn.commit()
@@ -128,13 +189,68 @@ class SecurityManager:
         except Exception as e:
             print(f"Erro ao registrar conversa: {e}")
     
+    def store_document(self, email, chat_id, filename, file_content, extracted_text):
+        """Armazena documento processado"""
+        try:
+            conn = sqlite3.connect('lidia_security.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO file_uploads 
+                (email, filename, file_size, upload_time, chat_id, file_content)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (
+                email,
+                filename,
+                len(file_content),
+                datetime.now(),
+                chat_id,
+                extracted_text[:5000]  # Limitar tamanho
+            ))
+            
+            # Atualizar chat para indicar que tem documento
+            cursor.execute('''
+                UPDATE chats 
+                SET has_document = 1, document_name = ?
+                WHERE chat_id = ?
+            ''', (filename, chat_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Erro ao armazenar documento: {e}")
+            return False
+    
+    def get_document_context(self, chat_id):
+        """Recupera contexto do documento para o chat"""
+        try:
+            conn = sqlite3.connect('lidia_security.db')
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT file_content, filename FROM file_uploads 
+                WHERE chat_id = ? 
+                ORDER BY upload_time DESC 
+                LIMIT 1
+            ''', (chat_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            if result:
+                return result[0], result[1]
+            return None, None
+        except:
+            return None, None
+    
     def get_user_chats(self, email):
         try:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
             cursor.execute('''
-                SELECT chat_id, title, updated_at 
+                SELECT chat_id, title, updated_at, has_document, document_name 
                 FROM chats 
                 WHERE email = ? 
                 ORDER BY updated_at DESC 
@@ -144,7 +260,13 @@ class SecurityManager:
             chats = cursor.fetchall()
             conn.close()
             
-            return [{'chat_id': chat[0], 'title': chat[1], 'updated_at': chat[2]} for chat in chats]
+            return [{
+                'chat_id': chat[0], 
+                'title': chat[1], 
+                'updated_at': chat[2],
+                'has_document': bool(chat[3]),
+                'document_name': chat[4]
+            } for chat in chats]
         except:
             return []
     
@@ -208,6 +330,7 @@ Como assistente conversacional, você pode ajudar colaboradores do IPT com:
 - Interpretação e discussão de resultados de pesquisa
 - Sugestões de melhores práticas em projetos
 - Resposta a dúvidas técnicas e conceituais
+- Análise de documentos enviados pelos usuários
 
 IMPORTANTE: Apenas responda sobre o que você é se o usuário perguntar especificamente. Nesse caso, use: "Entendido, sou a assistente LIDIA do IPT (Instituto de Pesquisas Tecnológicas de São Paulo)".
 
@@ -225,20 +348,24 @@ Responda de forma clara, objetiva e profissional."""
                 return None
         return self.client
     
-    def process_query(self, message, user_email=""):
+    def process_query(self, message, user_email="", document_context="", filename=""):
         client = self.get_client()
         
         if not client:
-            return self.get_fallback_response(message)
+            return self.get_fallback_response(message, document_context, filename)
         
-        prompt = f"""{self.ipt_context}
-
-PERGUNTA: {message}
-
-Responda de forma clara e útil."""
+        # Construir prompt com contexto do documento se disponível
+        prompt_parts = [self.ipt_context]
+        
+        if document_context:
+            prompt_parts.append(f"\nDOCUMENTO ENVIADO PELO USUÁRIO ({filename}):\n{document_context[:3000]}\n")
+        
+        prompt_parts.append(f"\nPERGUNTA: {message}\n\nResponda de forma clara e útil.")
+        
+        prompt = "\n".join(prompt_parts)
         
         try:
-            response = client.messages.create(
+            response = self.client.messages.create(
                 model=self.model,
                 max_tokens=1500,
                 messages=[{"role": "user", "content": prompt}]
@@ -248,10 +375,13 @@ Responda de forma clara e útil."""
             
         except Exception as e:
             print(f"Erro na API Anthropic: {e}")
-            return self.get_fallback_response(message)
+            return self.get_fallback_response(message, document_context, filename)
     
-    def get_fallback_response(self, message):
+    def get_fallback_response(self, message, document_context="", filename=""):
         message_lower = message.lower()
+        
+        if document_context:
+            return f"Recebi o documento '{filename}' com sucesso. Posso ajudá-lo a analisar o conteúdo, responder perguntas sobre o documento ou auxiliar com interpretações. O que gostaria de saber sobre este documento?"
         
         if any(word in message_lower for word in ['o que é', 'quem é', 'como funciona', 'lidia']):
             return "Entendido, sou a assistente LIDIA do IPT (Instituto de Pesquisas Tecnológicas de São Paulo). Sou uma assistente conversacional criada para apoiar colaboradores do IPT com orientações sobre pesquisa, redação técnica, tecnologias e metodologias. Como posso ajudá-lo hoje?"
@@ -319,23 +449,27 @@ def login():
     data = request.get_json()
     email = data.get('email', '').strip()
     
+    print(f"DEBUG: Tentativa de login para: {email}")
+    
     is_valid, message = security.validate_ipt_email(email)
     
     if is_valid:
         client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
         security.log_access(email, client_ip, "login", True)
         
+        is_admin = security.is_admin(email)
+        
         session['authenticated'] = True
         session['user_email'] = email
-        session['is_admin'] = email in ADMIN_USERS
+        session['is_admin'] = is_admin
         session['session_id'] = str(uuid.uuid4())
         
-        print(f"Login: {email}, Admin: {session['is_admin']}")  # Debug
+        print(f"DEBUG: Login sucesso - Email: {email}, Admin: {is_admin}")
         
         return jsonify({
             'success': True,
             'message': 'Login realizado com sucesso',
-            'is_admin': session['is_admin']
+            'is_admin': is_admin
         })
     else:
         client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
@@ -362,13 +496,22 @@ def chat():
         chat_id = 'chat_' + str(uuid.uuid4())
     
     try:
-        response = assistant.process_query(message, session['user_email'])
+        # Verificar se há documento no contexto
+        document_context, filename = security.get_document_context(chat_id)
+        
+        response = assistant.process_query(
+            message, 
+            session['user_email'],
+            document_context or "",
+            filename or ""
+        )
         
         security.log_conversation(
             session['user_email'], 
             chat_id,
             message, 
-            response
+            response,
+            document_context=document_context or ""
         )
         
         return jsonify({
@@ -408,18 +551,44 @@ def upload_file():
     if file.filename == '':
         return jsonify({'error': 'Nenhum arquivo selecionado'}), 400
     
-    # Por enquanto, apenas simular upload
-    return jsonify({
-        'success': True,
-        'filename': file.filename,
-        'size': len(file.read()),
-        'message': f'Arquivo {file.filename} recebido com sucesso! Funcionalidade de processamento será implementada em breve.'
-    })
+    chat_id = request.form.get('chat_id', 'chat_' + str(uuid.uuid4()))
+    
+    try:
+        # Extrair texto do arquivo
+        extracted_text = DocumentProcessor.extract_text_from_file(file)
+        
+        # Armazenar documento
+        success = security.store_document(
+            session['user_email'],
+            chat_id,
+            secure_filename(file.filename),
+            file.read(),
+            extracted_text
+        )
+        
+        if success:
+            return jsonify({
+                'success': True,
+                'filename': file.filename,
+                'chat_id': chat_id,
+                'message': f'Documento "{file.filename}" processado com sucesso! Agora você pode fazer perguntas sobre o conteúdo.',
+                'extracted_length': len(extracted_text)
+            })
+        else:
+            return jsonify({'error': 'Erro ao processar documento'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': f'Erro ao processar arquivo: {str(e)}'}), 500
 
 @app.route('/api/costs')
 def costs():
-    if not session.get('authenticated') or not session.get('is_admin'):
-        return jsonify({'error': 'Acesso negado'}), 403
+    if not session.get('authenticated'):
+        return jsonify({'error': 'Não autenticado'}), 401
+    
+    print(f"DEBUG: Verificando custos - User: {session['user_email']}, Admin: {session.get('is_admin')}")
+    
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Acesso negado - apenas administradores'}), 403
     
     costs_data = get_current_costs()
     return jsonify(costs_data)
@@ -434,11 +603,15 @@ def user_info():
     if not session.get('authenticated'):
         return jsonify({'error': 'Não autenticado'}), 401
     
-    return jsonify({
+    user_data = {
         'email': session['user_email'],
         'is_admin': session.get('is_admin', False),
         'authenticated': True
-    })
+    }
+    
+    print(f"DEBUG: User info response: {user_data}")
+    
+    return jsonify(user_data)
 
 @app.route('/health')
 def health():
