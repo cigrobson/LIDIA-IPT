@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>LIDIA - Inteligência Artificial do LID-IPT</title>
+    
+    <!-- Favicon da LIDIA -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHZpZXdCb3g9IjAgMCA0MCA0MCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGRlZnM+CjxsaW5lYXJHcmFkaWVudCBpZD0iZ3JhZGllbnQiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPgo8c3RvcCBvZmZzZXQ9IjAlIiBzdHlsZT0ic3RvcC1jb2xvcjojZTkxZTYzO3N0b3Atb3BhY2l0eToxIiAvPgo8c3RvcCBvZmZzZXQ9IjI1JSIgc3R5bGU9InN0b3AtY29sb3I6I2Y1N2MwMDtzdG9wLW9wYWNpdHk6MSIgLz4KPHN0b3Agb2Zmc2V0PSI1MCUiIHN0eWxlPSJzdG9wLWNvbG9yOiM4YmMzNGE7c3RvcC1vcGFjaXR5OjEiIC8+CjxzdG9wIG9mZnNldD0iNzUlIiBzdHlsZT0ic3RvcC1jb2xvcjojNjczYWI3O3N0b3Atb3BhY2l0eToxIiAvPgo8L2xpbmVhckdyYWRpZW50Pgo8L2RlZnM+CjxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjE4IiBmaWxsPSJ1cmwoI2dyYWRpZW50KSIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiLz4KPHRleHQgeD0iMjAiIHk9IjI2IiBmb250LWZhbWlseT0iQXJpYWwsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSJ3aGl0ZSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+TElESUE8L3RleHQ+Cjwvc3ZnPg==">
+    
     <style>
         * {
             margin: 0;
@@ -271,6 +275,26 @@
             overflow-y: auto;
         }
 
+        .chat-item {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .chat-item:hover {
+            background: white;
+            border-color: #e5e7eb;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .chat-item.active {
+            background: #eff6ff;
+            border-color: #bfdbfe;
+        }
+
         .chat-content {
             flex: 1;
             display: flex;
@@ -481,7 +505,7 @@
             flex: 1;
             border: 2px solid #e5e7eb;
             border-radius: 24px;
-            padding: 1rem 1.5rem;
+            padding: 1rem 1.5rem 1rem 3rem;
             font-size: 1rem;
             outline: none;
             resize: none;
@@ -499,6 +523,27 @@
 
         .message-input::placeholder {
             color: #9ca3af;
+        }
+
+        .upload-button {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #6b7280;
+            cursor: pointer;
+            font-size: 18px;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+
+        .upload-button:hover {
+            color: #3b82f6;
+            background: #f1f5f9;
         }
 
         .send-button {
@@ -625,6 +670,10 @@
             background: #f0fdf4;
             border: 1px solid #bbf7d0;
             color: #166534;
+        }
+
+        #fileInput {
+            display: none;
         }
 
         @media (max-width: 768px) {
@@ -761,6 +810,8 @@
 
                     <div class="input-container">
                         <div class="input-wrapper">
+                            <button class="upload-button" onclick="document.getElementById('fileInput').click()">+</button>
+                            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx" onchange="handleFileUpload(this)">
                             <textarea 
                                 class="message-input" 
                                 id="messageInput" 
@@ -781,6 +832,7 @@
         let currentChatId = null;
         let messageHistory = [];
         let userInfo = null;
+        let isFirstInteraction = true;
 
         // Verificar autenticação ao carregar
         document.addEventListener('DOMContentLoaded', function() {
@@ -793,11 +845,13 @@
                 const response = await fetch('/api/user');
                 if (response.ok) {
                     userInfo = await response.json();
+                    console.log('User info:', userInfo); // Debug
                     showMainApp();
                 } else {
                     showLoginPage();
                 }
             } catch (error) {
+                console.error('Auth check error:', error);
                 showLoginPage();
             }
         }
@@ -811,10 +865,16 @@
             document.getElementById('loginPage').style.display = 'none';
             document.getElementById('mainApp').classList.add('active');
             
+            console.log('Showing main app, user is admin:', userInfo.is_admin); // Debug
+            
             if (userInfo && userInfo.is_admin) {
-                document.getElementById('adminPanel').classList.add('show');
+                const adminPanel = document.getElementById('adminPanel');
+                adminPanel.classList.add('show');
+                console.log('Admin panel should be visible now'); // Debug
                 loadCosts();
             }
+            
+            loadChatHistory();
         }
 
         function handleLoginKeyDown(event) {
@@ -827,7 +887,6 @@
         async function login() {
             const email = document.getElementById('emailInput').value.trim();
             const loginButton = document.getElementById('loginButton');
-            const alertDiv = document.getElementById('loginAlert');
             
             if (!email) {
                 showAlert('Por favor, digite seu email', 'error');
@@ -850,6 +909,7 @@
 
                 if (data.success) {
                     userInfo = { email: email, is_admin: data.is_admin };
+                    console.log('Login successful, is_admin:', data.is_admin); // Debug
                     showMainApp();
                 } else {
                     showAlert(data.message, 'error');
@@ -879,6 +939,7 @@
                 userInfo = null;
                 currentChatId = null;
                 messageHistory = [];
+                isFirstInteraction = true;
                 document.getElementById('messagesContainer').innerHTML = '';
                 showLoginPage();
             } catch (error) {
@@ -887,15 +948,77 @@
         }
 
         async function loadCosts() {
+            if (!userInfo.is_admin) return;
+            
             try {
                 const response = await fetch('/api/costs');
                 if (response.ok) {
                     const costs = await response.json();
                     document.getElementById('adminCostText').textContent = 
                         `Admin: Custo mensal: R$ ${costs.total.toFixed(2)} | Perguntas: ${costs.questions} | Orçamento usado: ${costs.budget_used.toFixed(1)}%`;
+                } else {
+                    console.error('Failed to load costs:', response.status);
                 }
             } catch (error) {
                 console.error('Erro ao carregar custos:', error);
+            }
+        }
+
+        async function loadChatHistory() {
+            try {
+                const response = await fetch('/api/chats');
+                if (response.ok) {
+                    const chats = await response.json();
+                    const historyContainer = document.getElementById('chatHistory');
+                    historyContainer.innerHTML = '';
+                    
+                    chats.forEach(chat => {
+                        const chatItem = document.createElement('li');
+                        chatItem.className = 'chat-item';
+                        chatItem.onclick = () => loadChat(chat.chat_id);
+                        
+                        const title = document.createElement('div');
+                        title.style.fontWeight = '500';
+                        title.style.marginBottom = '0.25rem';
+                        title.textContent = chat.title;
+                        
+                        const time = document.createElement('div');
+                        time.style.fontSize = '0.75rem';
+                        time.style.color = '#6b7280';
+                        time.textContent = new Date(chat.updated_at).toLocaleDateString();
+                        
+                        chatItem.appendChild(title);
+                        chatItem.appendChild(time);
+                        historyContainer.appendChild(chatItem);
+                    });
+                }
+            } catch (error) {
+                console.error('Erro ao carregar histórico:', error);
+            }
+        }
+
+        async function loadChat(chatId) {
+            try {
+                const response = await fetch(`/api/chats/${chatId}`);
+                if (response.ok) {
+                    const messages = await response.json();
+                    currentChatId = chatId;
+                    
+                    document.getElementById('welcomeScreen').style.display = 'none';
+                    document.getElementById('chatArea').classList.add('active');
+                    
+                    const container = document.getElementById('messagesContainer');
+                    container.innerHTML = '';
+                    
+                    messages.forEach(msg => {
+                        addMessage(msg.content, msg.sender, false);
+                    });
+                    
+                    isFirstInteraction = false;
+                    updateInputPlaceholder();
+                }
+            } catch (error) {
+                console.error('Erro ao carregar chat:', error);
             }
         }
 
@@ -913,6 +1036,15 @@
             }
         }
 
+        function updateInputPlaceholder() {
+            const input = document.getElementById('messageInput');
+            if (isFirstInteraction) {
+                input.placeholder = 'Como posso ajudar você hoje?';
+            } else {
+                input.placeholder = 'Responder à LIDIA...';
+            }
+        }
+
         function autoResize(textarea) {
             textarea.style.height = 'auto';
             textarea.style.height = textarea.scrollHeight + 'px';
@@ -925,13 +1057,42 @@
             }
         }
 
+        function handleFileUpload(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addMessage(`📁 ${data.message}`, 'assistant');
+                } else {
+                    addMessage('Erro ao processar arquivo.', 'assistant');
+                }
+            })
+            .catch(error => {
+                console.error('Erro no upload:', error);
+                addMessage('Erro ao enviar arquivo.', 'assistant');
+            });
+            
+            input.value = '';
+        }
+
         function startNewChat() {
-            currentChatId = 'chat_' + Date.now();
+            currentChatId = null;
             messageHistory = [];
+            isFirstInteraction = true;
             
             document.getElementById('welcomeScreen').style.display = 'none';
             document.getElementById('chatArea').classList.add('active');
             document.getElementById('messagesContainer').innerHTML = '';
+            updateInputPlaceholder();
             document.getElementById('messageInput').focus();
         }
 
@@ -949,14 +1110,15 @@
             
             if (!message) return;
 
-            if (!currentChatId) {
-                startNewChat();
-            }
-
             // Adicionar mensagem do usuário
             addMessage(message, 'user');
             input.value = '';
             input.style.height = 'auto';
+            
+            if (isFirstInteraction) {
+                isFirstInteraction = false;
+                updateInputPlaceholder();
+            }
 
             // Mostrar indicador de carregamento
             showLoading();
@@ -967,13 +1129,21 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ message: message })
+                    body: JSON.stringify({ 
+                        message: message,
+                        chat_id: currentChatId 
+                    })
                 });
 
                 if (response.ok) {
                     const data = await response.json();
                     hideLoading();
                     addMessage(data.response, 'assistant');
+                    
+                    if (!currentChatId) {
+                        currentChatId = data.chat_id;
+                        loadChatHistory(); // Recarregar histórico
+                    }
                     
                     // Atualizar custos se for admin
                     if (userInfo && userInfo.is_admin) {
@@ -989,7 +1159,7 @@
             }
         }
 
-        function addMessage(content, sender) {
+        function addMessage(content, sender, scroll = true) {
             const container = document.getElementById('messagesContainer');
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}`;
@@ -1008,10 +1178,10 @@
             messageDiv.appendChild(messageContent);
             container.appendChild(messageDiv);
             
-            // Scroll para a mensagem mais recente
-            container.scrollTop = container.scrollHeight;
+            if (scroll) {
+                container.scrollTop = container.scrollHeight;
+            }
             
-            // Adicionar ao histórico
             messageHistory.push({ content, sender, timestamp: new Date() });
         }
 
@@ -1019,7 +1189,6 @@
             document.getElementById('loadingIndicator').classList.add('show');
             document.getElementById('sendButton').disabled = true;
             
-            // Scroll para mostrar o loading
             const container = document.getElementById('messagesContainer');
             setTimeout(() => {
                 container.scrollTop = container.scrollHeight;
