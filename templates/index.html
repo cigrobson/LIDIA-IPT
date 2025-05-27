@@ -231,7 +231,7 @@
         }
 
         .admin-panel.show {
-            display: block;
+            display: block !important;
         }
 
         .new-chat-btn, .logout-btn {
@@ -672,6 +672,57 @@
             color: #166534;
         }
 
+        .alert-info {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+        }
+
+        .file-upload-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .file-upload-modal.show {
+            display: flex;
+        }
+
+        .file-upload-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .file-drop-zone {
+            border: 2px dashed #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .file-drop-zone:hover {
+            border-color: #3b82f6;
+            background: #f8fafc;
+        }
+
+        .file-drop-zone.drag-over {
+            border-color: #3b82f6;
+            background: #eff6ff;
+        }
+
         #fileInput {
             display: none;
         }
@@ -728,6 +779,23 @@
             <button class="login-button" id="loginButton" onclick="login()">
                 Acessar LIDIA
             </button>
+        </div>
+    </div>
+
+    <!-- Modal de Upload -->
+    <div class="file-upload-modal" id="fileUploadModal">
+        <div class="file-upload-content">
+            <h3 style="margin-bottom: 1rem; text-align: center;">Enviar Documento</h3>
+            <div class="file-drop-zone" id="fileDropZone" onclick="document.getElementById('fileInput').click()">
+                <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
+                <p style="font-weight: 600; margin-bottom: 0.5rem;">Clique para selecionar ou arraste um arquivo</p>
+                <p style="color: #6b7280; font-size: 0.875rem;">PDF, DOC, DOCX, TXT, CSV, XLSX</p>
+            </div>
+            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx" onchange="handleFileSelection(this)">
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button onclick="closeFileModal()" style="flex: 1; padding: 0.75rem; border: 1px solid #d1d5db; background: white; border-radius: 8px; cursor: pointer;">Cancelar</button>
+                <button id="uploadButton" onclick="uploadSelectedFile()" style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer;" disabled>Enviar</button>
+            </div>
         </div>
     </div>
 
@@ -810,12 +878,11 @@
 
                     <div class="input-container">
                         <div class="input-wrapper">
-                            <button class="upload-button" onclick="document.getElementById('fileInput').click()">+</button>
-                            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx" onchange="handleFileUpload(this)">
+                            <button class="upload-button" onclick="showFileModal()">+</button>
                             <textarea 
                                 class="message-input" 
                                 id="messageInput" 
-                                placeholder="Responder à LIDIA..."
+                                placeholder="Como posso ajudar você hoje?"
                                 rows="1"
                                 onkeydown="handleKeyDown(event)"
                                 oninput="autoResize(this)"
@@ -833,6 +900,7 @@
         let messageHistory = [];
         let userInfo = null;
         let isFirstInteraction = true;
+        let selectedFile = null;
 
         // Verificar autenticação ao carregar
         document.addEventListener('DOMContentLoaded', function() {
@@ -845,9 +913,10 @@
                 const response = await fetch('/api/user');
                 if (response.ok) {
                     userInfo = await response.json();
-                    console.log('User info:', userInfo); // Debug
+                    console.log('User info received:', userInfo);
                     showMainApp();
                 } else {
+                    console.log('User not authenticated');
                     showLoginPage();
                 }
             } catch (error) {
@@ -865,13 +934,17 @@
             document.getElementById('loginPage').style.display = 'none';
             document.getElementById('mainApp').classList.add('active');
             
-            console.log('Showing main app, user is admin:', userInfo.is_admin); // Debug
+            console.log('Showing main app. User info:', userInfo);
             
-            if (userInfo && userInfo.is_admin) {
+            // FORÇAR exibição do admin panel se for admin
+            if (userInfo && userInfo.is_admin === true) {
                 const adminPanel = document.getElementById('adminPanel');
+                adminPanel.style.display = 'block';
                 adminPanel.classList.add('show');
-                console.log('Admin panel should be visible now'); // Debug
+                console.log('Admin panel forced to show');
                 loadCosts();
+            } else {
+                console.log('User is not admin:', userInfo.is_admin);
             }
             
             loadChatHistory();
@@ -906,15 +979,17 @@
                 });
 
                 const data = await response.json();
+                console.log('Login response:', data);
 
                 if (data.success) {
                     userInfo = { email: email, is_admin: data.is_admin };
-                    console.log('Login successful, is_admin:', data.is_admin); // Debug
+                    console.log('Login successful. User info set to:', userInfo);
                     showMainApp();
                 } else {
                     showAlert(data.message, 'error');
                 }
             } catch (error) {
+                console.error('Login error:', error);
                 showAlert('Erro de conexão. Tente novamente.', 'error');
             } finally {
                 loginButton.disabled = false;
@@ -940,6 +1015,7 @@
                 currentChatId = null;
                 messageHistory = [];
                 isFirstInteraction = true;
+                selectedFile = null;
                 document.getElementById('messagesContainer').innerHTML = '';
                 showLoginPage();
             } catch (error) {
@@ -948,19 +1024,29 @@
         }
 
         async function loadCosts() {
-            if (!userInfo.is_admin) return;
+            if (!userInfo || !userInfo.is_admin) {
+                console.log('Not loading costs - user is not admin');
+                return;
+            }
+            
+            console.log('Loading costs for admin user');
             
             try {
                 const response = await fetch('/api/costs');
+                console.log('Costs response status:', response.status);
+                
                 if (response.ok) {
                     const costs = await response.json();
+                    console.log('Costs data:', costs);
                     document.getElementById('adminCostText').textContent = 
                         `Admin: Custo mensal: R$ ${costs.total.toFixed(2)} | Perguntas: ${costs.questions} | Orçamento usado: ${costs.budget_used.toFixed(1)}%`;
                 } else {
-                    console.error('Failed to load costs:', response.status);
+                    console.error('Failed to load costs:', response.status, await response.text());
+                    document.getElementById('adminCostText').textContent = 'Admin: Erro ao carregar custos';
                 }
             } catch (error) {
                 console.error('Erro ao carregar custos:', error);
+                document.getElementById('adminCostText').textContent = 'Admin: Erro de conexão';
             }
         }
 
@@ -981,6 +1067,10 @@
                         title.style.fontWeight = '500';
                         title.style.marginBottom = '0.25rem';
                         title.textContent = chat.title;
+                        
+                        if (chat.has_document) {
+                            title.textContent = '📄 ' + title.textContent;
+                        }
                         
                         const time = document.createElement('div');
                         time.style.fontSize = '0.75rem';
@@ -1014,7 +1104,7 @@
                         addMessage(msg.content, msg.sender, false);
                     });
                     
-                    isFirstInteraction = false;
+                    isFirstInteraction = messages.length === 0;
                     updateInputPlaceholder();
                 }
             } catch (error) {
@@ -1057,31 +1147,60 @@
             }
         }
 
-        function handleFileUpload(input) {
-            const file = input.files[0];
-            if (!file) return;
+        // Funções de Upload
+        function showFileModal() {
+            document.getElementById('fileUploadModal').classList.add('show');
+        }
+
+        function closeFileModal() {
+            document.getElementById('fileUploadModal').classList.remove('show');
+            selectedFile = null;
+            document.getElementById('uploadButton').disabled = true;
+            document.getElementById('fileInput').value = '';
+        }
+
+        function handleFileSelection(input) {
+            selectedFile = input.files[0];
+            document.getElementById('uploadButton').disabled = !selectedFile;
+        }
+
+        async function uploadSelectedFile() {
+            if (!selectedFile) return;
             
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', selectedFile);
+            formData.append('chat_id', currentChatId || '');
             
-            fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
+            closeFileModal();
+            
+            if (!currentChatId) {
+                startNewChat();
+            }
+            
+            // Mostrar mensagem de upload
+            addMessage(`📄 Enviando documento: ${selectedFile.name}...`, 'assistant');
+            
+            try {
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
                 if (data.success) {
-                    addMessage(`📁 ${data.message}`, 'assistant');
+                    currentChatId = data.chat_id;
+                    addMessage(data.message, 'assistant');
+                    loadChatHistory(); // Recarregar histórico
                 } else {
-                    addMessage('Erro ao processar arquivo.', 'assistant');
+                    addMessage('Erro ao processar documento.', 'assistant');
                 }
-            })
-            .catch(error => {
+            } catch (error) {
                 console.error('Erro no upload:', error);
                 addMessage('Erro ao enviar arquivo.', 'assistant');
-            });
+            }
             
-            input.value = '';
+            selectedFile = null;
         }
 
         function startNewChat() {
@@ -1199,6 +1318,34 @@
             document.getElementById('loadingIndicator').classList.remove('show');
             document.getElementById('sendButton').disabled = false;
         }
+
+        // Drag and drop para upload
+        const fileDropZone = document.getElementById('fileDropZone');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            fileDropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            fileDropZone.addEventListener(eventName, () => fileDropZone.classList.add('drag-over'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            fileDropZone.addEventListener(eventName, () => fileDropZone.classList.remove('drag-over'), false);
+        });
+
+        fileDropZone.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                selectedFile = files[0];
+                document.getElementById('uploadButton').disabled = false;
+            }
+        });
     </script>
 </body>
 </html>
