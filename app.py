@@ -16,24 +16,25 @@ from collections import defaultdict
 import threading
 
 app = Flask(__name__)
-
-# Configurações Railway-específicas
 app.secret_key = os.environ.get('SECRET_KEY', 'lidia-ipt-secret-key-2024-enhanced')
 
-# Railway detecta a porta automaticamente
+# Configurações Railway
 PORT = int(os.environ.get('PORT', 5000))
-
-# Configurações adaptadas para Railway
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 INITIAL_ADMIN = os.environ.get('INITIAL_ADMIN', 'robsonss@ipt.br')
 MAX_FILE_SIZE = int(os.environ.get('MAX_FILE_SIZE', 10 * 1024 * 1024))
 MAX_REQUESTS_PER_HOUR = int(os.environ.get('MAX_REQUESTS_PER_HOUR', 100))
 MAX_REQUESTS_PER_MINUTE = int(os.environ.get('MAX_REQUESTS_PER_MINUTE', 20))
 
-# Detectar se estamos no Railway
+# Lista explícita de administradores (como no código original)
+ADMIN_USERS = [
+    'robsonss@ipt.br',
+    # Adicionar outros emails @ipt.br conforme necessário
+]
+
 IS_RAILWAY = os.environ.get('RAILWAY_ENVIRONMENT') is not None
 
-# Cache simples em memória (Railway friendly)
+# Cache simples
 class SimpleCache:
     def __init__(self):
         self.cache = {}
@@ -57,7 +58,7 @@ class SimpleCache:
 
 cache = SimpleCache()
 
-# Rate limiting Railway-compatible
+# Rate limiting
 class RateLimiter:
     def __init__(self):
         self.requests = defaultdict(list)
@@ -66,14 +67,10 @@ class RateLimiter:
     def is_allowed(self, email, max_per_hour=100, max_per_minute=20):
         with self.lock:
             now = time.time()
-            
-            # Limpar requests antigos
             hour_ago = now - 3600
             minute_ago = now - 60
             
             self.requests[email] = [req_time for req_time in self.requests[email] if req_time > hour_ago]
-            
-            # Verificar limites
             recent_requests = [req_time for req_time in self.requests[email] if req_time > minute_ago]
             
             if len(self.requests[email]) >= max_per_hour:
@@ -82,14 +79,13 @@ class RateLimiter:
             if len(recent_requests) >= max_per_minute:
                 return False, "Limite de requisições por minuto excedido"
             
-            # Adicionar nova requisição
             self.requests[email].append(now)
             return True, "OK"
 
 rate_limiter = RateLimiter()
 
 class DocumentProcessor:
-    """Processador de documentos com melhorias de segurança"""
+    """Processador de documentos CORRIGIDO"""
     
     @staticmethod
     def validate_file(file_storage):
@@ -98,9 +94,9 @@ class DocumentProcessor:
             return False, "Arquivo inválido"
         
         # Verificar tamanho
-        file_storage.seek(0, 2)  # Ir para o final
+        file_storage.seek(0, 2)
         size = file_storage.tell()
-        file_storage.seek(0)  # Voltar ao início
+        file_storage.seek(0)
         
         if size > MAX_FILE_SIZE:
             return False, f"Arquivo muito grande. Máximo: {MAX_FILE_SIZE/1024/1024:.1f}MB"
@@ -116,64 +112,113 @@ class DocumentProcessor:
     
     @staticmethod
     def extract_text_from_file(file_storage):
-        """Extrai texto de arquivo enviado com validações"""
+        """Extrai texto de arquivo - VERSÃO CORRIGIDA"""
         try:
+            print(f"🔍 Iniciando extração de: {file_storage.filename}")
+            
             # Validar arquivo primeiro
             is_valid, message = DocumentProcessor.validate_file(file_storage)
             if not is_valid:
+                print(f"❌ Validação falhou: {message}")
                 return f"Erro de validação: {message}"
             
             filename = file_storage.filename.lower()
+            file_storage.seek(0)  # Garantir que está no início
             file_content = file_storage.read()
             
+            print(f"📄 Arquivo lido: {len(file_content)} bytes")
+            
             if filename.endswith('.pdf'):
-                return DocumentProcessor.extract_from_pdf(file_content)
+                text = DocumentProcessor.extract_from_pdf(file_content)
             elif filename.endswith('.docx'):
-                return DocumentProcessor.extract_from_docx(file_content)
+                text = DocumentProcessor.extract_from_docx(file_content)
             elif filename.endswith('.txt'):
-                return file_content.decode('utf-8', errors='ignore')
+                text = file_content.decode('utf-8', errors='ignore')
             else:
-                return "Formato de arquivo não suportado para extração de texto."
+                return "Formato de arquivo não suportado."
+            
+            print(f"✅ Texto extraído: {len(text)} caracteres")
+            
+            if not text or len(text.strip()) < 10:
+                return "Não foi possível extrair texto suficiente do arquivo. Verifique se o arquivo não está vazio ou corrompido."
+            
+            return text
                 
         except Exception as e:
+            print(f"❌ Erro na extração: {str(e)}")
             return f"Erro ao processar arquivo: {str(e)}"
     
     @staticmethod
     def extract_from_pdf(file_content):
-        """Extrai texto de PDF com melhor tratamento de erros"""
+        """Extrai texto de PDF - VERSÃO APRIMORADA"""
         try:
+            print("📖 Processando PDF...")
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
             
             if len(pdf_reader.pages) > 50:
                 return "PDF muito grande. Máximo de 50 páginas suportadas."
             
             text = ""
+            successful_pages = 0
+            
             for i, page in enumerate(pdf_reader.pages):
                 try:
                     page_text = page.extract_text()
-                    text += page_text + f"\n--- Página {i+1} ---\n"
-                except:
-                    text += f"\n--- Erro ao ler página {i+1} ---\n"
+                    if page_text and page_text.strip():
+                        text += f"\n=== PÁGINA {i+1} ===\n"
+                        text += page_text.strip() + "\n"
+                        successful_pages += 1
+                    else:
+                        text += f"\n=== PÁGINA {i+1} (sem texto detectado) ===\n"
+                except Exception as e:
+                    print(f"⚠️ Erro na página {i+1}: {e}")
+                    text += f"\n=== PÁGINA {i+1} (erro na leitura) ===\n"
             
-            return text if text.strip() else "Não foi possível extrair texto do PDF."
+            print(f"📊 PDF processado: {successful_pages}/{len(pdf_reader.pages)} páginas com texto")
+            
+            if not text.strip():
+                return "PDF não contém texto extraível. Pode ser um arquivo de imagem ou estar corrompido."
+            
+            return text
+            
         except Exception as e:
+            print(f"❌ Erro no PDF: {e}")
             return f"Erro ao processar PDF: {str(e)}"
     
     @staticmethod
     def extract_from_docx(file_content):
-        """Extrai texto de DOCX com melhor tratamento"""
+        """Extrai texto de DOCX - VERSÃO APRIMORADA"""
         try:
+            print("📝 Processando DOCX...")
             doc = docx.Document(io.BytesIO(file_content))
-            text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
             
-            # Extrair texto de tabelas também
-            for table in doc.tables:
-                for row in table.rows:
+            text = ""
+            
+            # Extrair parágrafos
+            for i, paragraph in enumerate(doc.paragraphs):
+                if paragraph.text.strip():
+                    text += paragraph.text.strip() + "\n"
+            
+            # Extrair texto de tabelas
+            for table_num, table in enumerate(doc.tables):
+                text += f"\n=== TABELA {table_num + 1} ===\n"
+                for row_num, row in enumerate(table.rows):
+                    row_text = []
                     for cell in row.cells:
-                        text += "\n" + cell.text
+                        if cell.text.strip():
+                            row_text.append(cell.text.strip())
+                    if row_text:
+                        text += " | ".join(row_text) + "\n"
             
-            return text if text.strip() else "Documento DOCX vazio."
+            print(f"📊 DOCX processado: {len(text)} caracteres extraídos")
+            
+            if not text.strip():
+                return "Documento DOCX vazio ou sem texto extraível."
+            
+            return text
+            
         except Exception as e:
+            print(f"❌ Erro no DOCX: {e}")
             return f"Erro ao processar documento Word: {str(e)}"
 
 class SecurityManager:
@@ -185,38 +230,30 @@ class SecurityManager:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
-            # Verificar se banco já existe (migração)
+            # Verificar tabelas existentes
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             existing_tables = [row[0] for row in cursor.fetchall()]
             
             print(f"📊 Tabelas existentes: {existing_tables}")
             
-            # Tabela de conversas com migração automática
-            if 'conversation_logs' not in existing_tables:
-                cursor.execute('''
-                    CREATE TABLE conversation_logs (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        email TEXT,
-                        chat_id TEXT,
-                        question TEXT,
-                        response TEXT,
-                        timestamp DATETIME,
-                        session_id TEXT,
-                        cost REAL,
-                        document_context TEXT,
-                        processing_time REAL,
-                        ip_address TEXT
-                    )
-                ''')
-                print("✅ Tabela conversation_logs criada")
-            else:
-                # Migrar tabela existente - adicionar novas colunas se necessário
-                self.migrate_table_columns(cursor, 'conversation_logs', [
-                    ('processing_time', 'REAL'),
-                    ('ip_address', 'TEXT')
-                ])
+            # Tabela de conversas
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS conversation_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT,
+                    chat_id TEXT,
+                    question TEXT,
+                    response TEXT,
+                    timestamp DATETIME,
+                    session_id TEXT,
+                    cost REAL DEFAULT 0.003,
+                    document_context TEXT,
+                    processing_time REAL DEFAULT 0,
+                    ip_address TEXT
+                )
+            ''')
             
-            # Tabela de chats melhorada
+            # Tabela de chats
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS chats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -232,13 +269,7 @@ class SecurityManager:
                 )
             ''')
             
-            # Migrar colunas se necessário
-            self.migrate_table_columns(cursor, 'chats', [
-                ('message_count', 'INTEGER DEFAULT 0'),
-                ('total_cost', 'REAL DEFAULT 0')
-            ])
-            
-            # Tabela de acessos melhorada
+            # Tabela de acessos
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS access_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,7 +283,7 @@ class SecurityManager:
                 )
             ''')
             
-            # Tabela de uploads melhorada
+            # Tabela de uploads
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS file_uploads (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -267,46 +298,26 @@ class SecurityManager:
                 )
             ''')
             
-            # Nova tabela de administradores
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS admin_users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    email TEXT UNIQUE,
-                    granted_by TEXT,
-                    granted_at DATETIME,
-                    is_active BOOLEAN DEFAULT 1,
-                    permissions TEXT DEFAULT 'full'
-                )
-            ''')
+            # Adicionar colunas se não existirem (migração automática)
+            self.migrate_table_if_needed(cursor, 'conversation_logs', [
+                ('processing_time', 'REAL DEFAULT 0'),
+                ('ip_address', 'TEXT'),
+                ('document_context', 'TEXT')
+            ])
             
-            # Nova tabela de configurações do sistema
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS system_config (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key TEXT UNIQUE,
-                    value TEXT,
-                    updated_by TEXT,
-                    updated_at DATETIME
-                )
-            ''')
-            
-            # Inserir administrador inicial se não existir
-            cursor.execute('SELECT COUNT(*) FROM admin_users WHERE email = ?', (INITIAL_ADMIN,))
-            if cursor.fetchone()[0] == 0:
-                cursor.execute('''
-                    INSERT INTO admin_users (email, granted_by, granted_at, is_active, permissions)
-                    VALUES (?, 'SYSTEM', ?, 1, 'full')
-                ''', (INITIAL_ADMIN, datetime.now()))
-                print(f"✅ Admin inicial criado: {INITIAL_ADMIN}")
+            self.migrate_table_if_needed(cursor, 'chats', [
+                ('message_count', 'INTEGER DEFAULT 0'),
+                ('total_cost', 'REAL DEFAULT 0')
+            ])
             
             conn.commit()
             conn.close()
-            print("✅ Banco de dados inicializado/migrado com sucesso")
+            print("✅ Banco de dados inicializado com sucesso")
             
         except Exception as e:
             print(f"❌ Erro ao inicializar banco: {e}")
     
-    def migrate_table_columns(self, cursor, table_name, columns):
+    def migrate_table_if_needed(self, cursor, table_name, columns):
         """Adiciona colunas se não existirem"""
         try:
             cursor.execute(f"PRAGMA table_info({table_name})")
@@ -323,7 +334,6 @@ class SecurityManager:
         if not email:
             return False, "Email obrigatório"
         
-        # Sanitizar email
         email = bleach.clean(email.strip().lower(), tags=[], strip=True)
         
         if not email.endswith('@ipt.br'):
@@ -335,10 +345,33 @@ class SecurityManager:
         return True, "Email válido"
     
     def is_admin(self, email):
-        """Verifica se email é administrador ativo"""
+        """Verifica se email é administrador (lista explícita + dinâmica)"""
+        # Lista estática original
+        if email in ADMIN_USERS:
+            return True
+        
+        # Lista dinâmica no banco (funcionalidade nova)
         try:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
+            
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS admin_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE,
+                    granted_by TEXT,
+                    granted_at DATETIME,
+                    is_active BOOLEAN DEFAULT 1,
+                    permissions TEXT DEFAULT 'full'
+                )
+            ''')
+            
+            # Inserir admins da lista estática se não existirem
+            for admin_email in ADMIN_USERS:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO admin_users (email, granted_by, granted_at, is_active, permissions)
+                    VALUES (?, 'SYSTEM', ?, 1, 'full')
+                ''', (admin_email, datetime.now()))
             
             cursor.execute('''
                 SELECT permissions FROM admin_users 
@@ -346,11 +379,12 @@ class SecurityManager:
             ''', (email,))
             
             result = cursor.fetchone()
+            conn.commit()
             conn.close()
             
             return result is not None
         except:
-            return False
+            return email in ADMIN_USERS  # Fallback para lista estática
     
     def add_admin(self, new_admin_email, granted_by_email, permissions='full'):
         """Adiciona novo administrador"""
@@ -366,9 +400,11 @@ class SecurityManager:
             
             conn.commit()
             conn.close()
+            
+            print(f"✅ Admin adicionado: {new_admin_email}")
             return True
         except Exception as e:
-            print(f"Erro ao adicionar admin: {e}")
+            print(f"❌ Erro ao adicionar admin: {e}")
             return False
     
     def get_all_admins(self):
@@ -377,6 +413,25 @@ class SecurityManager:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
+            # Garantir que tabela existe
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS admin_users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    email TEXT UNIQUE,
+                    granted_by TEXT,
+                    granted_at DATETIME,
+                    is_active BOOLEAN DEFAULT 1,
+                    permissions TEXT DEFAULT 'full'
+                )
+            ''')
+            
+            # Inserir admins da lista estática se não existirem
+            for admin_email in ADMIN_USERS:
+                cursor.execute('''
+                    INSERT OR IGNORE INTO admin_users (email, granted_by, granted_at, is_active, permissions)
+                    VALUES (?, 'SYSTEM', ?, 1, 'full')
+                ''', (admin_email, datetime.now()))
+            
             cursor.execute('''
                 SELECT email, granted_by, granted_at, is_active, permissions
                 FROM admin_users
@@ -384,6 +439,7 @@ class SecurityManager:
             ''')
             
             admins = cursor.fetchall()
+            conn.commit()
             conn.close()
             
             return [{
@@ -393,8 +449,16 @@ class SecurityManager:
                 'is_active': bool(admin[3]),
                 'permissions': admin[4]
             } for admin in admins]
-        except:
-            return []
+        except Exception as e:
+            print(f"❌ Erro ao listar admins: {e}")
+            # Fallback para lista estática
+            return [{
+                'email': email,
+                'granted_by': 'SYSTEM',
+                'granted_at': datetime.now().isoformat(),
+                'is_active': True,
+                'permissions': 'full'
+            } for email in ADMIN_USERS]
     
     def log_conversation(self, email, chat_id, question, response, cost=0.003, document_context="", processing_time=0):
         try:
@@ -417,7 +481,7 @@ class SecurityManager:
                 datetime.now(),
                 session.get('session_id', 'unknown'),
                 cost,
-                document_context[:500] if document_context else "",
+                document_context[:1000] if document_context else "",
                 processing_time,
                 request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
             ))
@@ -448,12 +512,11 @@ class SecurityManager:
             conn.commit()
             conn.close()
         except Exception as e:
-            print(f"Erro ao registrar conversa: {e}")
+            print(f"❌ Erro ao registrar conversa: {e}")
     
     def store_document(self, email, chat_id, filename, file_content, extracted_text):
-        """Armazena documento processado com hash"""
+        """Armazena documento processado"""
         try:
-            # Gerar hash do arquivo
             file_hash = hashlib.md5(file_content).hexdigest()
             
             conn = sqlite3.connect('lidia_security.db')
@@ -469,12 +532,12 @@ class SecurityManager:
                 len(file_content),
                 datetime.now(),
                 chat_id,
-                extracted_text[:10000],
+                extracted_text[:15000],  # Aumentar limite para documentos maiores
                 file_hash,
                 'processed'
             ))
             
-            # Atualizar chat para indicar que tem documento
+            # Atualizar chat
             cursor.execute('''
                 UPDATE chats 
                 SET has_document = 1, document_name = ?
@@ -483,9 +546,11 @@ class SecurityManager:
             
             conn.commit()
             conn.close()
+            
+            print(f"✅ Documento armazenado: {filename} ({len(extracted_text)} chars)")
             return True
         except Exception as e:
-            print(f"Erro ao armazenar documento: {e}")
+            print(f"❌ Erro ao armazenar documento: {e}")
             return False
     
     def get_document_context(self, chat_id):
@@ -505,9 +570,11 @@ class SecurityManager:
             conn.close()
             
             if result:
+                print(f"📄 Contexto recuperado: {result[1]} ({len(result[0])} chars)")
                 return result[0], result[1]
             return None, None
-        except:
+        except Exception as e:
+            print(f"❌ Erro ao recuperar contexto: {e}")
             return None, None
     
     def get_user_chats(self, email):
@@ -573,25 +640,24 @@ class SecurityManager:
             return []
     
     def get_system_stats(self):
-        """Retorna estatísticas do sistema para o painel admin"""
+        """Estatísticas do sistema"""
         try:
             conn = sqlite3.connect('lidia_security.db')
             cursor = conn.cursor()
             
-            # Estatísticas básicas
             stats = {}
             
             # Total de usuários únicos
             cursor.execute('SELECT COUNT(DISTINCT email) FROM conversation_logs')
-            stats['total_users'] = cursor.fetchone()[0]
+            stats['total_users'] = cursor.fetchone()[0] or 0
             
             # Total de conversas
             cursor.execute('SELECT COUNT(*) FROM conversation_logs')
-            stats['total_conversations'] = cursor.fetchone()[0]
+            stats['total_conversations'] = cursor.fetchone()[0] or 0
             
             # Total de documentos
             cursor.execute('SELECT COUNT(*) FROM file_uploads')
-            stats['total_documents'] = cursor.fetchone()[0]
+            stats['total_documents'] = cursor.fetchone()[0] or 0
             
             # Custos totais
             cursor.execute('SELECT SUM(cost) FROM conversation_logs')
@@ -604,7 +670,7 @@ class SecurityManager:
                 SELECT COUNT(DISTINCT email) FROM conversation_logs 
                 WHERE timestamp > ?
             ''', (thirty_days_ago,))
-            stats['active_users_30d'] = cursor.fetchone()[0]
+            stats['active_users_30d'] = cursor.fetchone()[0] or 0
             
             # Conversas hoje
             today = datetime.now().date()
@@ -612,7 +678,7 @@ class SecurityManager:
                 SELECT COUNT(*) FROM conversation_logs 
                 WHERE DATE(timestamp) = ?
             ''', (today,))
-            stats['conversations_today'] = cursor.fetchone()[0]
+            stats['conversations_today'] = cursor.fetchone()[0] or 0
             
             # Top usuários
             cursor.execute('''
@@ -632,7 +698,7 @@ class SecurityManager:
                     SELECT COUNT(*) FROM conversation_logs 
                     WHERE DATE(timestamp) = ?
                 ''', (day,))
-                count = cursor.fetchone()[0]
+                count = cursor.fetchone()[0] or 0
                 activity_by_day.append({
                     'date': day.strftime('%Y-%m-%d'),
                     'count': count
@@ -643,14 +709,24 @@ class SecurityManager:
             conn.close()
             return stats
         except Exception as e:
-            print(f"Erro ao obter estatísticas: {e}")
-            return {}
+            print(f"❌ Erro ao obter estatísticas: {e}")
+            return {
+                'total_users': 0,
+                'total_conversations': 0,
+                'total_documents': 0,
+                'total_costs': 0,
+                'active_users_30d': 0,
+                'conversations_today': 0,
+                'top_users': [],
+                'activity_by_day': []
+            }
 
 class LIDIAAssistant:
     def __init__(self):
         self.model = "claude-3-haiku-20240307"
         self.client = None
         
+        # CONTEXTO ORIGINAL RESTAURADO
         self.ipt_context = """Você é LIDIA, a Inteligência Artificial do Laboratório de Inovação Digital do Instituto de Pesquisas Tecnológicas (IPT).
 
 Como assistente conversacional, você pode ajudar colaboradores do IPT com:
@@ -664,22 +740,29 @@ Como assistente conversacional, você pode ajudar colaboradores do IPT com:
 
 IMPORTANTE: Apenas responda sobre o que você é se o usuário perguntar especificamente. Nesse caso, use: "Entendido, sou a assistente LIDIA do IPT (Instituto de Pesquisas Tecnológicas de São Paulo)".
 
-Responda de forma clara, objetiva e profissional. Se um documento foi enviado, analise-o cuidadosamente e responda com base no conteúdo."""
+Responda de forma clara, objetiva e profissional. Se um documento foi enviado, analise-o cuidadosamente e responda com base no conteúdo fornecido."""
     
     def get_client(self):
         if self.client is None:
             try:
                 import anthropic
                 if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY == '':
+                    print("⚠️ ANTHROPIC_API_KEY não configurada")
                     return None
                 self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+                print("✅ Cliente Anthropic inicializado")
             except Exception as e:
-                print(f"Erro ao inicializar Anthropic: {e}")
+                print(f"❌ Erro ao inicializar Anthropic: {e}")
                 return None
         return self.client
     
     def process_query(self, message, user_email="", document_context="", filename=""):
         start_time = time.time()
+        
+        print(f"🤖 Processando query de {user_email}")
+        print(f"📝 Mensagem: {message[:100]}...")
+        if document_context:
+            print(f"📄 Documento: {filename} ({len(document_context)} chars)")
         
         # Verificar cache primeiro
         cache_key = hashlib.md5(f"{message}{document_context}".encode()).hexdigest()
@@ -687,6 +770,7 @@ Responda de forma clara, objetiva e profissional. Se um documento foi enviado, a
         
         if cached_response:
             processing_time = time.time() - start_time
+            print(f"💾 Resposta do cache em {processing_time:.2f}s")
             return cached_response, processing_time
         
         client = self.get_client()
@@ -696,20 +780,37 @@ Responda de forma clara, objetiva e profissional. Se um documento foi enviado, a
             processing_time = time.time() - start_time
             return response, processing_time
         
-        # Construir prompt com contexto do documento se disponível
+        # PROMPT MELHORADO PARA ANÁLISE DE DOCUMENTOS
         prompt_parts = [self.ipt_context]
         
         if document_context:
-            prompt_parts.append(f"\nDOCUMENTO ENVIADO PELO USUÁRIO ({filename}):\n{document_context[:4000]}\n")
+            prompt_parts.append(f"""
+DOCUMENTO ANEXADO PELO USUÁRIO:
+Arquivo: {filename}
+Conteúdo:
+{document_context}
+
+INSTRUÇÕES ESPECIAIS:
+- Analise cuidadosamente o conteúdo do documento acima
+- Use as informações do documento para responder à pergunta do usuário
+- Se a pergunta não se relaciona ao documento, responda sobre o documento mesmo assim
+- Seja específico e cite trechos relevantes quando apropriado
+""")
         
-        prompt_parts.append(f"\nPERGUNTA: {message}\n\nResponda de forma clara e útil.")
+        prompt_parts.append(f"""
+PERGUNTA DO USUÁRIO: {message}
+
+Responda de forma clara, objetiva e profissional. Se há um documento anexado, base sua resposta no conteúdo fornecido.""")
         
         prompt = "\n".join(prompt_parts)
         
         try:
+            print("🔄 Enviando para API Anthropic...")
+            
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=2000,
+                temperature=0.7,
                 messages=[{"role": "user", "content": prompt}]
             )
             
@@ -719,10 +820,12 @@ Responda de forma clara, objetiva e profissional. Se um documento foi enviado, a
             cache.set(cache_key, result)
             
             processing_time = time.time() - start_time
+            print(f"✅ Resposta gerada em {processing_time:.2f}s")
+            
             return result, processing_time
             
         except Exception as e:
-            print(f"Erro na API Anthropic: {e}")
+            print(f"❌ Erro na API Anthropic: {e}")
             response = self.get_fallback_response(message, document_context, filename)
             processing_time = time.time() - start_time
             return response, processing_time
@@ -731,8 +834,20 @@ Responda de forma clara, objetiva e profissional. Se um documento foi enviado, a
         message_lower = message.lower()
         
         if document_context:
-            return f"Recebi o documento '{filename}' com sucesso. Posso ajudá-lo a analisar o conteúdo, responder perguntas sobre o documento ou auxiliar com interpretações. O que gostaria de saber sobre este documento?"
+            return f"""Recebi o documento '{filename}' com sucesso e posso analisá-lo!
+
+📄 **Documento recebido:** {filename}
+📊 **Tamanho do conteúdo:** {len(document_context)} caracteres
+
+Baseado no conteúdo do documento, posso ajudá-lo com:
+- Resumo do documento
+- Análise de pontos específicos
+- Resposta a perguntas sobre o conteúdo
+- Identificação de informações relevantes
+
+O que gostaria de saber sobre este documento? (Nota: Sistema funcionando em modo básico - API Anthropic indisponível)"""
         
+        # Respostas fallback originais mantidas
         if any(word in message_lower for word in ['o que é', 'quem é', 'como funciona', 'lidia']):
             return "Entendido, sou a assistente LIDIA do IPT (Instituto de Pesquisas Tecnológicas de São Paulo). Sou uma assistente conversacional criada para apoiar colaboradores do IPT com orientações sobre pesquisa, redação técnica, tecnologias e metodologias. Como posso ajudá-lo hoje?"
         
@@ -829,7 +944,7 @@ def index():
 
 @app.route('/admin')
 def admin_panel():
-    """Rota para o painel administrativo"""
+    """Painel administrativo"""
     if not session.get('authenticated') or not session.get('is_admin'):
         return redirect(url_for('index'))
     
@@ -840,7 +955,7 @@ def login():
     data = request.get_json()
     email = data.get('email', '').strip()
     
-    print(f"DEBUG: Tentativa de login para: {email}")
+    print(f"🔐 Tentativa de login: {email}")
     
     is_valid, message = security.validate_ipt_email(email)
     
@@ -852,7 +967,7 @@ def login():
         session['is_admin'] = is_admin
         session['session_id'] = str(uuid.uuid4())
         
-        print(f"DEBUG: Login sucesso - Email: {email}, Admin: {is_admin}")
+        print(f"✅ Login sucesso - Email: {email}, Admin: {is_admin}")
         
         return jsonify({
             'success': True,
@@ -860,6 +975,7 @@ def login():
             'is_admin': is_admin
         })
     else:
+        print(f"❌ Login falhou: {message}")
         return jsonify({
             'success': False,
             'message': message
@@ -914,6 +1030,7 @@ def chat():
         })
         
     except Exception as e:
+        print(f"❌ Erro no chat: {e}")
         return jsonify({'error': f'Erro interno: {str(e)}'}), 500
 
 @app.route('/api/chats')
@@ -932,6 +1049,8 @@ def get_chat(chat_id):
 @require_auth
 @rate_limit
 def upload_file():
+    print("📤 Upload iniciado")
+    
     if 'file' not in request.files:
         return jsonify({'error': 'Nenhum arquivo enviado'}), 400
     
@@ -943,10 +1062,12 @@ def upload_file():
     
     try:
         # Extrair texto do arquivo
+        print(f"🔍 Extraindo texto de: {file.filename}")
         extracted_text = DocumentProcessor.extract_text_from_file(file)
         
         # Verificar se houve erro na extração
         if extracted_text.startswith('Erro'):
+            print(f"❌ Erro na extração: {extracted_text}")
             return jsonify({'error': extracted_text}), 400
         
         # Ler conteúdo do arquivo para hash
@@ -963,19 +1084,22 @@ def upload_file():
         )
         
         if success:
+            print(f"✅ Upload concluído: {file.filename}")
             return jsonify({
                 'success': True,
                 'filename': file.filename,
                 'chat_id': chat_id,
-                'message': f'Documento "{file.filename}" processado com sucesso! Agora você pode fazer perguntas sobre o conteúdo.',
+                'message': f'✅ Documento "{file.filename}" processado com sucesso!\n\n📄 **Conteúdo extraído:** {len(extracted_text)} caracteres\n\nAgora você pode fazer perguntas sobre o documento. Exemplo:\n- "Faça um resumo deste documento"\n- "Quais são os pontos principais?"\n- "O que este documento diz sobre...?"',
                 'extracted_length': len(extracted_text)
             })
         else:
-            return jsonify({'error': 'Erro ao processar documento'}), 500
+            return jsonify({'error': 'Erro ao armazenar documento no banco de dados'}), 500
             
     except Exception as e:
+        print(f"❌ Erro no upload: {e}")
         return jsonify({'error': f'Erro ao processar arquivo: {str(e)}'}), 500
 
+# Rotas administrativas (TODAS AS FUNCIONALIDADES ORIGINAIS)
 @app.route('/api/costs')
 @require_admin
 def costs():
@@ -985,7 +1109,7 @@ def costs():
 @app.route('/api/admin/stats')
 @require_admin
 def admin_stats():
-    """Retorna estatísticas detalhadas do sistema"""
+    """Estatísticas detalhadas"""
     stats = security.get_system_stats()
     costs = get_current_costs()
     
@@ -995,17 +1119,54 @@ def admin_stats():
         'generated_at': datetime.now().isoformat()
     })
 
+@app.route('/api/admin/users')
+@require_admin
+def admin_users():
+    """Lista todos os usuários"""
+    try:
+        conn = sqlite3.connect('lidia_security.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                email,
+                COUNT(DISTINCT chat_id) as total_chats,
+                COUNT(*) as total_messages,
+                SUM(cost) as total_cost,
+                MAX(timestamp) as last_activity,
+                MIN(timestamp) as first_activity
+            FROM conversation_logs 
+            GROUP BY email
+            ORDER BY total_messages DESC
+        ''')
+        
+        users = []
+        for row in cursor.fetchall():
+            users.append({
+                'email': row[0],
+                'total_chats': row[1],
+                'total_messages': row[2],
+                'total_cost': row[3] if row[3] else 0,
+                'last_activity': row[4],
+                'first_activity': row[5]
+            })
+        
+        conn.close()
+        return jsonify(users)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/admin/admins')
 @require_admin
 def admin_list():
-    """Lista todos os administradores"""
+    """Lista administradores"""
     admins = security.get_all_admins()
     return jsonify(admins)
 
 @app.route('/api/admin/admins', methods=['POST'])
 @require_admin
 def add_admin():
-    """Adiciona novo administrador"""
+    """Adiciona administrador"""
     data = request.get_json()
     new_admin_email = data.get('email', '').strip()
     permissions = data.get('permissions', 'full')
@@ -1022,6 +1183,75 @@ def add_admin():
         return jsonify({'message': f'Administrador {new_admin_email} adicionado com sucesso'})
     else:
         return jsonify({'error': 'Erro ao adicionar administrador'}), 500
+
+@app.route('/api/admin/documents')
+@require_admin
+def admin_documents():
+    """Lista documentos"""
+    try:
+        conn = sqlite3.connect('lidia_security.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                email, filename, file_size, upload_time, 
+                chat_id, file_hash, processing_status
+            FROM file_uploads 
+            ORDER BY upload_time DESC 
+            LIMIT 200
+        ''')
+        
+        documents = []
+        for row in cursor.fetchall():
+            documents.append({
+                'email': row[0],
+                'filename': row[1],
+                'file_size': row[2],
+                'upload_time': row[3],
+                'chat_id': row[4],
+                'file_hash': row[5],
+                'processing_status': row[6]
+            })
+        
+        conn.close()
+        return jsonify(documents)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/conversations')
+@require_admin
+def admin_conversations():
+    """Lista conversas"""
+    try:
+        conn = sqlite3.connect('lidia_security.db')
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT 
+                email, chat_id, question, response, timestamp, 
+                cost, processing_time, ip_address
+            FROM conversation_logs 
+            ORDER BY timestamp DESC 
+            LIMIT 100
+        ''')
+        
+        conversations = []
+        for row in cursor.fetchall():
+            conversations.append({
+                'email': row[0],
+                'chat_id': row[1],
+                'question': row[2][:100] + "..." if len(row[2]) > 100 else row[2],
+                'response': row[3][:100] + "..." if len(row[3]) > 100 else row[3],
+                'timestamp': row[4],
+                'cost': row[5],
+                'processing_time': row[6],
+                'ip_address': row[7]
+            })
+        
+        conn.close()
+        return jsonify(conversations)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -1044,22 +1274,20 @@ def health():
     return jsonify({
         'status': 'healthy', 
         'timestamp': datetime.now().isoformat(),
-        'version': '2.0-railway',
+        'version': '2.0-railway-fixed',
         'environment': 'railway' if IS_RAILWAY else 'local'
     })
 
 @app.route('/migration-status')
 def migration_status():
-    """Endpoint para verificar status da migração"""
+    """Status da migração"""
     try:
         conn = sqlite3.connect('lidia_security.db')
         cursor = conn.cursor()
         
-        # Verificar tabelas
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
         
-        # Contar registros
         stats = {}
         for table in tables:
             cursor.execute(f"SELECT COUNT(*) FROM {table}")
@@ -1071,7 +1299,9 @@ def migration_status():
             'migration_status': 'success',
             'tables': tables,
             'record_counts': stats,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'admin_system': 'active',
+            'document_processing': 'enhanced'
         })
         
     except Exception as e:
@@ -1082,8 +1312,10 @@ def migration_status():
         }), 500
 
 if __name__ == '__main__':
-    print(f"🚀 Iniciando LIDIA v2.0 {'no Railway' if IS_RAILWAY else 'localmente'}")
+    print("🚀 INICIANDO LIDIA v2.0 - VERSÃO CORRIGIDA")
+    print(f"🌍 Ambiente: {'Railway' if IS_RAILWAY else 'Local'}")
     print(f"📊 Porta: {PORT}")
-    print(f"🔑 Admin inicial: {INITIAL_ADMIN}")
+    print(f"🔑 Admins: {ADMIN_USERS}")
+    print(f"🤖 Anthropic API: {'✅ Configurada' if ANTHROPIC_API_KEY else '❌ Não configurada'}")
     
     app.run(host='0.0.0.0', port=PORT, debug=False)
