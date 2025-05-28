@@ -234,6 +234,25 @@
             display: block !important;
         }
 
+        .admin-btn {
+            background: #8b5cf6;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .admin-btn:hover {
+            background: #7c3aed;
+        }
+
         .new-chat-btn, .logout-btn {
             background: #3b82f6;
             color: white;
@@ -303,33 +322,30 @@
         }
 
         .welcome-screen {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
             padding: 2rem;
             text-align: center;
+            background: #f8fafc;
+            border-bottom: 1px solid #e5e7eb;
         }
 
         .welcome-logo {
-            width: 120px;
-            height: 120px;
+            width: 80px;
+            height: 80px;
             background: linear-gradient(45deg, #e91e63, #f57c00, #8bc34a, #673ab7);
             border-radius: 50%;
             position: relative;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin-bottom: 2rem;
+            margin: 0 auto 1.5rem;
             box-shadow: 0 8px 32px rgba(0,0,0,0.12);
         }
 
         .welcome-logo::before {
             content: '';
             position: absolute;
-            width: 96px;
-            height: 96px;
+            width: 64px;
+            height: 64px;
             background: white;
             border-radius: 50%;
         }
@@ -338,80 +354,75 @@
             content: '• • •';
             position: absolute;
             color: #3b82f6;
-            font-size: 28px;
-            letter-spacing: 8px;
+            font-size: 20px;
+            letter-spacing: 6px;
             z-index: 1;
         }
 
         .greeting-text {
-            font-size: 2rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             color: #1f2937;
         }
 
         .help-text {
-            font-size: 1.125rem;
+            font-size: 1rem;
             color: #9ca3af;
-            margin-bottom: 2rem;
-            max-width: 600px;
+            margin-bottom: 1.5rem;
         }
 
         .features-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
             max-width: 800px;
-            width: 100%;
+            margin: 0 auto;
         }
 
         .feature-card {
             background: white;
-            padding: 1.5rem;
-            border-radius: 12px;
+            padding: 1rem;
+            border-radius: 8px;
             border: 1px solid #e5e7eb;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             transition: all 0.3s;
             cursor: pointer;
         }
 
         .feature-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             border-color: #3b82f6;
         }
 
         .feature-icon {
-            width: 48px;
-            height: 48px;
-            border-radius: 12px;
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
-            margin-bottom: 1rem;
+            font-size: 18px;
+            margin-bottom: 0.75rem;
         }
 
         .feature-title {
-            font-size: 1.125rem;
+            font-size: 0.875rem;
             font-weight: 600;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.25rem;
         }
 
         .feature-description {
             color: #6b7280;
-            font-size: 0.875rem;
-            line-height: 1.5;
+            font-size: 0.75rem;
+            line-height: 1.4;
         }
 
         .chat-area {
-            display: none;
+            display: flex;
             flex-direction: column;
             height: 100%;
-        }
-
-        .chat-area.active {
-            display: flex;
         }
 
         .messages-container {
@@ -727,6 +738,19 @@
             display: none;
         }
 
+        .document-indicator {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         @media (max-width: 768px) {
             .sidebar {
                 display: none;
@@ -813,6 +837,10 @@
                 <div class="admin-panel" id="adminPanel">
                     <span id="adminCostText">Carregando custos...</span>
                 </div>
+                <a href="/admin" class="admin-btn" id="adminButton" style="display: none;">
+                    <span>⚙️</span>
+                    Admin
+                </a>
                 <button class="new-chat-btn" onclick="startNewChat()">
                     <span>+</span>
                     Nova Conversa
@@ -832,6 +860,7 @@
             </aside>
 
             <main class="chat-content">
+                <!-- Seção de Boas-vindas e Sugestões -->
                 <div class="welcome-screen" id="welcomeScreen">
                     <div class="welcome-logo"></div>
                     <div class="greeting-text" id="greetingText">Bom dia</div>
@@ -861,6 +890,7 @@
                     </div>
                 </div>
 
+                <!-- Área de Chat -->
                 <div class="chat-area" id="chatArea">
                     <div class="messages-container" id="messagesContainer">
                         <!-- Mensagens aparecerão aqui -->
@@ -875,20 +905,21 @@
                             <div class="typing-dot"></div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="input-container">
-                        <div class="input-wrapper">
-                            <button class="upload-button" onclick="showFileModal()">+</button>
-                            <textarea 
-                                class="message-input" 
-                                id="messageInput" 
-                                placeholder="Como posso ajudar você hoje?"
-                                rows="1"
-                                onkeydown="handleKeyDown(event)"
-                                oninput="autoResize(this)"
-                            ></textarea>
-                            <button class="send-button" id="sendButton" onclick="sendMessage()">➤</button>
-                        </div>
+                <!-- Caixa de Input - SEMPRE VISÍVEL -->
+                <div class="input-container">
+                    <div class="input-wrapper">
+                        <button class="upload-button" onclick="showFileModal()">+</button>
+                        <textarea 
+                            class="message-input" 
+                            id="messageInput" 
+                            placeholder="Como posso ajudar você hoje?"
+                            rows="1"
+                            onkeydown="handleKeyDown(event)"
+                            oninput="autoResize(this)"
+                        ></textarea>
+                        <button class="send-button" id="sendButton" onclick="sendMessage()">➤</button>
                     </div>
                 </div>
             </main>
@@ -901,6 +932,7 @@
         let userInfo = null;
         let isFirstInteraction = true;
         let selectedFile = null;
+        let currentDocumentContext = null;
 
         // Verificar autenticação ao carregar
         document.addEventListener('DOMContentLoaded', function() {
@@ -936,12 +968,16 @@
             
             console.log('Showing main app. User info:', userInfo);
             
-            // FORÇAR exibição do admin panel se for admin
+            // Mostrar botão admin se for admin
             if (userInfo && userInfo.is_admin === true) {
                 const adminPanel = document.getElementById('adminPanel');
+                const adminButton = document.getElementById('adminButton');
+                
                 adminPanel.style.display = 'block';
                 adminPanel.classList.add('show');
-                console.log('Admin panel forced to show');
+                adminButton.style.display = 'flex';
+                
+                console.log('Admin controls shown');
                 loadCosts();
             } else {
                 console.log('User is not admin:', userInfo.is_admin);
@@ -1016,6 +1052,7 @@
                 messageHistory = [];
                 isFirstInteraction = true;
                 selectedFile = null;
+                currentDocumentContext = null;
                 document.getElementById('messagesContainer').innerHTML = '';
                 showLoginPage();
             } catch (error) {
@@ -1094,11 +1131,15 @@
                     const messages = await response.json();
                     currentChatId = chatId;
                     
+                    // Esconder welcome screen
                     document.getElementById('welcomeScreen').style.display = 'none';
-                    document.getElementById('chatArea').classList.add('active');
+                    document.getElementById('chatArea').style.display = 'flex';
                     
                     const container = document.getElementById('messagesContainer');
                     container.innerHTML = '';
+                    
+                    // Verificar se há documento neste chat
+                    checkDocumentContext(chatId);
                     
                     messages.forEach(msg => {
                         addMessage(msg.content, msg.sender, false);
@@ -1106,9 +1147,67 @@
                     
                     isFirstInteraction = messages.length === 0;
                     updateInputPlaceholder();
+                    
+                    // Remover classe active de outros chats
+                    document.querySelectorAll('.chat-item').forEach(item => {
+                        item.classList.remove('active');
+                    });
+                    
+                    // Adicionar classe active ao chat atual
+                    const currentChatElement = document.querySelector(`[onclick="loadChat('${chatId}')"]`);
+                    if (currentChatElement) {
+                        currentChatElement.classList.add('active');
+                    }
                 }
             } catch (error) {
                 console.error('Erro ao carregar chat:', error);
+            }
+        }
+
+        async function checkDocumentContext(chatId) {
+            try {
+                const response = await fetch(`/api/document-context/${chatId}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.has_document) {
+                        currentDocumentContext = data;
+                        showDocumentIndicator(data.filename);
+                    } else {
+                        currentDocumentContext = null;
+                        hideDocumentIndicator();
+                    }
+                }
+            } catch (error) {
+                console.log('No document context found for this chat');
+                currentDocumentContext = null;
+                hideDocumentIndicator();
+            }
+        }
+
+        function showDocumentIndicator(filename) {
+            // Remover indicador existente se houver
+            const existingIndicator = document.querySelector('.document-indicator');
+            if (existingIndicator) {
+                existingIndicator.remove();
+            }
+            
+            // Criar novo indicador
+            const indicator = document.createElement('div');
+            indicator.className = 'document-indicator';
+            indicator.innerHTML = `
+                <span>📄</span>
+                <span>Documento carregado: <strong>${filename}</strong></span>
+            `;
+            
+            // Inserir no início do container de mensagens
+            const messagesContainer = document.getElementById('messagesContainer');
+            messagesContainer.insertBefore(indicator, messagesContainer.firstChild);
+        }
+
+        function hideDocumentIndicator() {
+            const indicator = document.querySelector('.document-indicator');
+            if (indicator) {
+                indicator.remove();
             }
         }
 
@@ -1128,7 +1227,9 @@
 
         function updateInputPlaceholder() {
             const input = document.getElementById('messageInput');
-            if (isFirstInteraction) {
+            if (currentDocumentContext) {
+                input.placeholder = `Pergunte algo sobre o documento "${currentDocumentContext.filename}"...`;
+            } else if (isFirstInteraction) {
                 input.placeholder = 'Como posso ajudar você hoje?';
             } else {
                 input.placeholder = 'Responder à LIDIA...';
@@ -1191,6 +1292,15 @@
                 if (data.success) {
                     currentChatId = data.chat_id;
                     addMessage(data.message, 'assistant');
+                    
+                    // Atualizar contexto do documento
+                    currentDocumentContext = {
+                        has_document: true,
+                        filename: data.filename
+                    };
+                    
+                    showDocumentIndicator(data.filename);
+                    updateInputPlaceholder();
                     loadChatHistory(); // Recarregar histórico
                 } else {
                     addMessage('Erro ao processar documento.', 'assistant');
@@ -1207,12 +1317,21 @@
             currentChatId = null;
             messageHistory = [];
             isFirstInteraction = true;
+            currentDocumentContext = null;
             
+            // Esconder welcome screen e mostrar chat area
             document.getElementById('welcomeScreen').style.display = 'none';
-            document.getElementById('chatArea').classList.add('active');
+            document.getElementById('chatArea').style.display = 'flex';
             document.getElementById('messagesContainer').innerHTML = '';
+            
+            hideDocumentIndicator();
             updateInputPlaceholder();
             document.getElementById('messageInput').focus();
+            
+            // Remover seleção de outros chats
+            document.querySelectorAll('.chat-item').forEach(item => {
+                item.classList.remove('active');
+            });
         }
 
         function startChatWithPrompt(prompt) {
@@ -1233,6 +1352,12 @@
             addMessage(message, 'user');
             input.value = '';
             input.style.height = 'auto';
+            
+            // Esconder welcome screen se ainda estiver visível
+            if (document.getElementById('welcomeScreen').style.display !== 'none') {
+                document.getElementById('welcomeScreen').style.display = 'none';
+                document.getElementById('chatArea').style.display = 'flex';
+            }
             
             if (isFirstInteraction) {
                 isFirstInteraction = false;
