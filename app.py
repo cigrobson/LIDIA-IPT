@@ -41,16 +41,20 @@ ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 supabase: Client = None
 if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
-        supabase = create_client(
-    supabase_url=SUPABASE_URL,
-    supabase_key=SUPABASE_KEY
-)
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         print("✅ Supabase conectado com sucesso!")
     except Exception as e:
         print(f"❌ Erro ao conectar Supabase: {e}")
         supabase = None
 else:
-    print("❌ Supabase não configurado - usando modo fallback")     print("✅ Supabase conectado com sucesso!")
+    print("❌ Supabase não configurado - usando modo fallback")
+    except Exception as e:
+        print(f"❌ Erro ao conectar Supabase: {e}")
+        supabase = None
+else:
+    print("❌ Supabase não configurado - usando modo fallback")
+else:
+    print("✅ Supabase conectado com sucesso!")
     except Exception as e:
         print(f"❌ Erro ao conectar Supabase: {e}")
         supabase = None
