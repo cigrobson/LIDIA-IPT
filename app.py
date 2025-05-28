@@ -18,110 +18,298 @@ app.secret_key = os.environ.get('SECRET_KEY', 'lidia-ipt-secret-key-2024')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
 class DocumentProcessor:
-    """Processador de documentos com suporte completo"""
+    """Processador de documentos com melhorias incrementais e fallbacks seguros"""
+    
+    def __init__(self):
+        # Verificar disponibilidade de bibliotecas avançadas
+        self.pymupdf_available = self._check_pymupdf()
+        self.docx2txt_available = self._check_docx2txt()
+        self.chardet_available = self._check_chardet()
+        
+        print(f"[RAG] Inicializando processador:")
+        print(f"[RAG] - PyMuPDF: {'✅' if self.pymupdf_available else '❌'}")
+        print(f"[RAG] - docx2txt: {'✅' if self.docx2txt_available else '❌'}")
+        print(f"[RAG] - chardet: {'✅' if self.chardet_available else '❌'}")
+    
+    def _check_pymupdf(self):
+        try:
+            import fitz
+            return True
+        except ImportError:
+            return False
+    
+    def _check_docx2txt(self):
+        try:
+            import docx2txt
+            return True
+        except ImportError:
+            return False
+    
+    def _check_chardet(self):
+        try:
+            import chardet
+            return True
+        except ImportError:
+            return False
     
     @staticmethod
     def extract_text_from_file(file_storage):
-        """Extrai texto de arquivo enviado"""
+        """Extrai texto com melhorias quando disponíveis, senão usa método atual"""
+        processor = DocumentProcessor()
+        return processor._extract_with_fallbacks(file_storage)
+    
+    def _extract_with_fallbacks(self, file_storage):
+        """Sistema híbrido com fallbacks seguros"""
         try:
             filename = file_storage.filename.lower()
             file_content = file_storage.read()
             
+            print(f"[RAG] Processando: {filename} ({len(file_content)} bytes)")
+            
+            # Determinar encoding se necessário
+            encoding = self._detect_encoding_safe(file_content) if filename.endswith(('.txt', '.csv')) else 'utf-8'
+            
+            # Estratégia baseada no tipo de arquivo
             if filename.endswith('.pdf'):
-                return DocumentProcessor.extract_from_pdf(file_content)
+                text = self._extract_pdf_improved(file_content)
             elif filename.endswith('.docx'):
-                return DocumentProcessor.extract_from_docx(file_content)
+                text = self._extract_docx_improved(file_content)
             elif filename.endswith('.txt'):
-                return file_content.decode('utf-8', errors='ignore')
+                text = self._extract_text_safe(file_content, encoding)
             elif filename.endswith('.csv'):
-                return DocumentProcessor.extract_from_csv(file_content)
+                text = self._extract_csv_improved(file_content, encoding)
             elif filename.endswith('.xlsx'):
-                return DocumentProcessor.extract_from_xlsx(file_content)
+                text = self._extract_xlsx_current(file_content)  # Manter método atual
             else:
                 return "Formato de arquivo não suportado para extração de texto."
-                
+            
+            if not text or len(text.strip()) < 10:
+                return "Não foi possível extrair conteúdo significativo do arquivo."
+            
+            # Aplicar limpeza básica
+            text = self._clean_text_safe(text)
+            
+            # Limitar tamanho para Railway (memória limitada)
+            max_length = 3500  # Mais conservador
+            if len(text) > max_length:
+                text = text[:max_length] + "\n\n[TEXTO TRUNCADO - DOCUMENTO MUITO GRANDE]"
+            
+            print(f"[RAG] Sucesso: {len(text)} caracteres extraídos")
+            return text
+            
         except Exception as e:
+            print(f"[RAG] Erro: {str(e)}")
             return f"Erro ao processar arquivo: {str(e)}"
     
-    @staticmethod
-    def extract_from_pdf(file_content):
-        """Extrai texto de PDF"""
-        try:
-            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
-            text = ""
-            for page in pdf_reader.pages:
-                text += page.extract_text() + "\n"
-            return text if text.strip() else "Não foi possível extrair texto do PDF."
-        except:
-            return "Erro ao processar PDF."
+    def _detect_encoding_safe(self, file_content):
+        """Detecta encoding com fallback seguro"""
+        if self.chardet_available:
+            try:
+                import chardet
+                result = chardet.detect(file_content)
+                detected = result.get('encoding', 'utf-8')
+                print(f"[RAG] Encoding detectado: {detected}")
+                return detected
+            except:
+                pass
+        return 'utf-8'
     
-    @staticmethod
-    def extract_from_docx(file_content):
-        """Extrai texto de DOCX"""
+    def _extract_pdf_improved(self, file_content):
+        """PDF com PyMuPDF se disponível, senão PyPDF2"""
+        text = ""
+        
+        # Tentativa 1: PyMuPDF (se disponível)
+        if self.pymupdf_available:
+            try:
+                import fitz
+                pdf_document = fitz.open(stream=file_content, filetype="pdf")
+                for page_num in range(min(pdf_document.page_count, 50)):  # Limite para Railway
+                    page = pdf_document[page_num]
+                    page_text = page.get_text()
+                    if page_text.strip():
+                        text += page_text + "\n"
+                pdf_document.close()
+                
+                if text.strip():
+                    print("[RAG] PDF extraído com PyMuPDF")
+                    return text
+            except Exception as e:
+                print(f"[RAG] PyMuPDF falhou: {e}")
+        
+        # Fallback: PyPDF2 (método atual)
         try:
+            import PyPDF2
+            import io
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_content))
+            for page in pdf_reader.pages[:50]:  # Limite para Railway
+                page_text = page.extract_text()
+                if page_text.strip():
+                    text += page_text + "\n"
+            
+            if text.strip():
+                print("[RAG] PDF extraído com PyPDF2")
+                return text
+        except Exception as e:
+            print(f"[RAG] PyPDF2 falhou: {e}")
+        
+        return "Não foi possível extrair texto do PDF. Arquivo pode estar protegido ou corrompido."
+    
+    def _extract_docx_improved(self, file_content):
+        """DOCX com docx2txt se disponível, senão python-docx"""
+        text = ""
+        
+        # Tentativa 1: docx2txt (se disponível)
+        if self.docx2txt_available:
+            try:
+                import docx2txt
+                import io
+                text = docx2txt.process(io.BytesIO(file_content))
+                if text and text.strip():
+                    print("[RAG] DOCX extraído com docx2txt")
+                    return text
+            except Exception as e:
+                print(f"[RAG] docx2txt falhou: {e}")
+        
+        # Fallback: python-docx (método atual)
+        try:
+            import docx
+            import io
             doc = docx.Document(io.BytesIO(file_content))
             text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-            return text if text.strip() else "Documento DOCX vazio."
-        except:
-            return "Erro ao processar documento Word."
+            
+            if text.strip():
+                print("[RAG] DOCX extraído com python-docx")
+                return text
+        except Exception as e:
+            print(f"[RAG] python-docx falhou: {e}")
+        
+        return "Erro ao processar documento Word."
     
-    @staticmethod
-    def extract_from_csv(file_content):
-        """Extrai dados de CSV"""
+    def _extract_text_safe(self, file_content, encoding):
+        """Extração de texto com múltiplos encodings"""
+        # Lista de encodings para tentar
+        encodings_to_try = [encoding, 'utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+        
+        for enc in encodings_to_try:
+            try:
+                text = file_content.decode(enc, errors='replace')
+                if text and len(text.strip()) > 0:
+                    print(f"[RAG] Texto extraído com encoding: {enc}")
+                    return text
+            except:
+                continue
+        
+        return "Erro ao decodificar arquivo de texto."
+    
+    def _extract_csv_improved(self, file_content, encoding):
+        """CSV com melhor detecção de delimitador"""
         try:
-            content = file_content.decode('utf-8', errors='ignore')
-            csv_reader = csv.reader(io.StringIO(content))
+            import csv
+            import io
+            
+            text = file_content.decode(encoding, errors='replace')
+            
+            # Detectar delimitador mais provável
+            delimiters = [',', ';', '\t', '|']
+            best_delimiter = ','
+            max_columns = 0
+            
+            for delimiter in delimiters:
+                try:
+                    sample_reader = csv.reader(io.StringIO(text[:1000]), delimiter=delimiter)
+                    first_row = next(sample_reader, [])
+                    if len(first_row) > max_columns:
+                        max_columns = len(first_row)
+                        best_delimiter = delimiter
+                except:
+                    continue
+            
+            # Processar CSV com melhor delimitador
+            csv_reader = csv.reader(io.StringIO(text), delimiter=best_delimiter)
             rows = list(csv_reader)
             
             if not rows:
                 return "Arquivo CSV vazio."
             
-            # Formato estruturado para CSV
-            result = "DADOS CSV:\n"
+            # Formato otimizado para análise
+            result = f"DADOS CSV (delimitador: '{best_delimiter}'):\n"
             headers = rows[0] if rows else []
-            result += f"Colunas: {', '.join(headers)}\n"
-            result += f"Total de linhas: {len(rows)-1}\n\n"
+            result += f"Colunas ({len(headers)}): {', '.join(headers[:8])}\n"
+            result += f"Total de registros: {len(rows)-1}\n\n"
             
-            # Mostrar primeiras 10 linhas como exemplo
-            result += "PRIMEIRAS LINHAS:\n"
-            for i, row in enumerate(rows[:11]):  # Header + 10 rows
-                result += f"Linha {i}: {', '.join(row)}\n"
+            # Amostra dos dados (limitada para Railway)
+            sample_size = min(15, len(rows))
+            result += "AMOSTRA DOS DADOS:\n"
             
-            if len(rows) > 11:
-                result += f"... e mais {len(rows)-11} linhas"
+            for i, row in enumerate(rows[:sample_size]):
+                if i == 0:  # Header
+                    result += f"CABEÇALHO: {' | '.join(str(cell)[:30] for cell in row[:6])}\n"
+                else:
+                    clean_row = [str(cell)[:30] for cell in row[:6]]
+                    result += f"Reg {i}: {' | '.join(clean_row)}\n"
             
+            if len(rows) > sample_size:
+                result += f"\n... e mais {len(rows)-sample_size} registros"
+            
+            print(f"[RAG] CSV processado: {len(rows)} linhas, delimitador '{best_delimiter}'")
             return result
-        except:
-            return "Erro ao processar arquivo CSV."
+            
+        except Exception as e:
+            print(f"[RAG] Erro no CSV: {e}")
+            return f"Erro ao processar CSV: {str(e)}"
     
-    @staticmethod
-    def extract_from_xlsx(file_content):
-        """Extrai dados de XLSX"""
+    def _extract_xlsx_current(self, file_content):
+        """XLSX - manter método atual (já funciona)"""
         try:
-            workbook = openpyxl.load_workbook(io.BytesIO(file_content))
+            import openpyxl
+            import io
+            workbook = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
             result = "DADOS EXCEL:\n"
             
-            for sheet_name in workbook.sheetnames:
+            for sheet_name in workbook.sheetnames[:3]:  # Limite para Railway
                 sheet = workbook[sheet_name]
-                result += f"\nPLANILHA: {sheet_name}\n"
+                result += f"\n=== PLANILHA: {sheet_name} ===\n"
                 
-                # Obter dados da planilha
-                rows = list(sheet.iter_rows(values_only=True))
+                rows = list(sheet.iter_rows(values_only=True, max_row=30))  # Limite para Railway
                 if rows:
-                    result += f"Dimensões: {len(rows)} linhas x {len(rows[0])} colunas\n"
+                    non_empty_rows = [row for row in rows if any(cell is not None for cell in row)]
                     
-                    # Mostrar primeiras 5 linhas
-                    for i, row in enumerate(rows[:5]):
-                        clean_row = [str(cell) if cell is not None else "" for cell in row]
-                        result += f"Linha {i+1}: {', '.join(clean_row)}\n"
-                    
-                    if len(rows) > 5:
-                        result += f"... e mais {len(rows)-5} linhas\n"
+                    if non_empty_rows:
+                        result += f"Dimensões: {len(non_empty_rows)} linhas úteis\n"
+                        
+                        # Header e amostra
+                        if non_empty_rows:
+                            header = [str(cell)[:20] if cell is not None else "" for cell in non_empty_rows[0][:6]]
+                            result += f"Colunas: {' | '.join(header)}\n\n"
+                        
+                        for i, row in enumerate(non_empty_rows[:8]):  # Reduzido para Railway
+                            clean_row = [str(cell)[:20] if cell is not None else "" for cell in row[:6]]
+                            result += f"Linha {i+1}: {' | '.join(clean_row)}\n"
+                        
+                        if len(non_empty_rows) > 8:
+                            result += f"... e mais {len(non_empty_rows)-8} linhas\n"
             
+            print(f"[RAG] Excel processado com {len(workbook.sheetnames)} planilhas")
             return result
-        except:
-            return "Erro ao processar arquivo Excel."
-
+            
+        except Exception as e:
+            return f"Erro ao processar Excel: {str(e)}"
+    
+    def _clean_text_safe(self, text):
+        """Limpeza básica e segura do texto"""
+        if not text:
+            return ""
+        
+        import re
+        
+        # Remover quebras excessivas
+        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        # Remover espaços excessivos
+        text = re.sub(r' +', ' ', text)
+        # Remover caracteres de controle problemáticos
+        text = ''.join(char for char in text if ord(char) >= 32 or char in '\n\t')
+        
+        return text.strip()
 class SecurityManager:
     def __init__(self):
         self.init_database()
