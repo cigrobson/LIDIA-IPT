@@ -36,7 +36,7 @@ SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-# Cliente Supabase - VERSÃO FUNCIONANDO
+# Cliente Supabase
 supabase: Client = None
 if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
@@ -60,27 +60,6 @@ if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
         supabase = None
 else:
     print("❌ Supabase não configurado - usando modo fallback")
-
-else:
-    print(f"❌ Variáveis Supabase não configuradas:")
-    print(f"   - SUPABASE_AVAILABLE: {SUPABASE_AVAILABLE}")
-    print(f"   - SUPABASE_URL: {bool(SUPABASE_URL)}")
-    print(f"   - SUPABASE_KEY: {bool(SUPABASE_KEY)}")
-    supabase = None
-
-    except Exception as e:
-        print(f"❌ Erro ao conectar Supabase: {e}")
-        print(f"❌ Erro tipo: {type(e)}")
-        print(f"❌ Erro detalhes: {str(e)}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
-        supabase = None
-else:
-    print(f"❌ Variáveis Supabase não configuradas:")
-    print(f"   - SUPABASE_AVAILABLE: {SUPABASE_AVAILABLE}")
-    print(f"   - SUPABASE_URL: {bool(SUPABASE_URL)}")
-    print(f"   - SUPABASE_KEY: {bool(SUPABASE_KEY)}")
-    supabase = None
 
 class AdvancedDocumentProcessor:
     """Processador de documentos avançado com chunking inteligente e fallbacks"""
