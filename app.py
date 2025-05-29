@@ -36,7 +36,7 @@ SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-# Cliente Supabase - DEBUG DETALHADO
+# Cliente Supabase - VERSÃO CORRIGIDA
 supabase: Client = None
 if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
@@ -44,32 +44,30 @@ if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
         print(f"[DEBUG] URL: {SUPABASE_URL}")
         print(f"[DEBUG] KEY length: {len(SUPABASE_KEY)}")
         print(f"[DEBUG] KEY starts with: {SUPABASE_KEY[:30]}...")
-        print(f"[DEBUG] SUPABASE_AVAILABLE: {SUPABASE_AVAILABLE}")
         
-        # Testar importação específica
-        from supabase import create_client, Client
-        print(f"[DEBUG] Supabase library imported successfully")
+        # Sintaxe correta para Supabase 2.4.2
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
         
-        # Tentar criar cliente com configuração específica
-        supabase = create_client(
-            supabase_url=SUPABASE_URL,
-            supabase_key=SUPABASE_KEY,
-            options={
-                'schema': 'public',
-                'auto_refresh_token': True,
-                'persist_session': True
-            }
-        )
-        print(f"[DEBUG] Client created: {type(supabase)}")
+        print(f"[DEBUG] Client created successfully: {type(supabase)}")
         
         # Testar uma operação simples
         result = supabase.table('administrators').select('email').limit(1).execute()
-        print(f"[DEBUG] Test query result: {result}")
+        print(f"[DEBUG] Test query successful: {len(result.data)} records")
         
         print("✅ Supabase conectado com sucesso!")
-    except ImportError as e:
-        print(f"❌ Erro de importação Supabase: {e}")
+    except Exception as e:
+        print(f"❌ Erro ao conectar Supabase: {e}")
+        print(f"❌ Erro tipo: {type(e)}")
+        import traceback
+        print(f"❌ Traceback: {traceback.format_exc()}")
         supabase = None
+else:
+    print(f"❌ Variáveis Supabase não configuradas:")
+    print(f"   - SUPABASE_AVAILABLE: {SUPABASE_AVAILABLE}")
+    print(f"   - SUPABASE_URL: {bool(SUPABASE_URL)}")
+    print(f"   - SUPABASE_KEY: {bool(SUPABASE_KEY)}")
+    supabase = None
+
     except Exception as e:
         print(f"❌ Erro ao conectar Supabase: {e}")
         print(f"❌ Erro tipo: {type(e)}")
