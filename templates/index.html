@@ -1261,57 +1261,72 @@
         }
 
         function handleFileSelection(input) {
-            selectedFile = input.files[0];
-            document.getElementById('uploadButton').disabled = !selectedFile;
+    console.log('handleFileSelection chamada');
+    console.log('input.files:', input.files);
+    
+    if (input.files && input.files.length > 0) {
+        selectedFile = input.files[0];
+        console.log('Arquivo selecionado:', selectedFile.name);
+        document.getElementById('uploadButton').disabled = false;
+    } else {
+        selectedFile = null;
+        document.getElementById('uploadButton').disabled = true;
+    }
+async function uploadSelectedFile() {
+    console.log('uploadSelectedFile chamada');
+    console.log('selectedFile:', selectedFile);
+    
+    if (!selectedFile) {
+        alert('Nenhum arquivo selecionado. Tente novamente.');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('chat_id', currentChatId || '');
+    
+    closeFileModal();
+    
+    if (!currentChatId) {
+        startNewChat();
+    }
+    
+    // Mostrar mensagem de upload
+    addMessage(`📄 Enviando documento: ${selectedFile.name}...`, 'assistant');
+    
+    try {
+        const response = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            currentChatId = data.chat_id;
+            addMessage(data.message, 'assistant');
+            
+            // Atualizar contexto do documento
+            currentDocumentContext = {
+                has_document: true,
+                filename: data.filename
+            };
+            
+            showDocumentIndicator(data.filename);
+            updateInputPlaceholder();
+            loadChatHistory(); // Recarregar histórico
+        } else {
+            addMessage('Erro ao processar documento.', 'assistant');
         }
-
-        async function uploadSelectedFile() {
-            if (!selectedFile) return;
+    } catch (error) {
+        console.error('Erro no upload:', error);
+        addMessage('Erro ao enviar arquivo.', 'assistant');
+    }
+    
+    selectedFile = null;
+}
+        
             
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-            formData.append('chat_id', currentChatId || '');
-            
-            closeFileModal();
-            
-            if (!currentChatId) {
-                startNewChat();
-            }
-            
-            // Mostrar mensagem de upload
-            addMessage(`📄 Enviando documento: ${selectedFile.name}...`, 'assistant');
-            
-            try {
-                const response = await fetch('/api/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    currentChatId = data.chat_id;
-                    addMessage(data.message, 'assistant');
-                    
-                    // Atualizar contexto do documento
-                    currentDocumentContext = {
-                        has_document: true,
-                        filename: data.filename
-                    };
-                    
-                    showDocumentIndicator(data.filename);
-                    updateInputPlaceholder();
-                    loadChatHistory(); // Recarregar histórico
-                } else {
-                    addMessage('Erro ao processar documento.', 'assistant');
-                }
-            } catch (error) {
-                console.error('Erro no upload:', error);
-                addMessage('Erro ao enviar arquivo.', 'assistant');
-            }
-            
-            selectedFile = null;
-        }
 
         function startNewChat() {
             currentChatId = null;
