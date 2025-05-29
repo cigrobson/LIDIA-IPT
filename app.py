@@ -36,7 +36,7 @@ SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-# Cliente Supabase - CORRIGIDO
+# Cliente Supabase
 supabase: Client = None
 if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
