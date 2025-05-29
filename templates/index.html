@@ -1281,8 +1281,12 @@ async function uploadSelectedFile() {
         return;
     }
     
+    // SALVAR arquivo antes de fechar modal
+    const fileToUpload = selectedFile;
+    const fileName = selectedFile.name;
+    
     const formData = new FormData();
-    formData.append('file', selectedFile);
+    formData.append('file', fileToUpload);
     formData.append('chat_id', currentChatId || '');
     
     closeFileModal();
@@ -1292,7 +1296,7 @@ async function uploadSelectedFile() {
     }
     
     // Mostrar mensagem de upload
-    addMessage(`📄 Enviando documento: ${selectedFile.name}...`, 'assistant');
+    addMessage(`📄 Enviando documento: ${fileName}...`, 'assistant');
     
     try {
         const response = await fetch('/api/upload', {
