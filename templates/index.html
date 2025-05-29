@@ -798,9 +798,8 @@
                 id="emailInput" 
                 class="login-input" 
                 placeholder="seu.nome@ipt.br"
-                onkeydown="handleLoginKeyDown(event)"
             >
-            <button class="login-button" id="loginButton" onclick="login()">
+            <button class="login-button" id="loginButton">
                 Acessar LIDIA
             </button>
         </div>
@@ -810,15 +809,15 @@
     <div class="file-upload-modal" id="fileUploadModal">
         <div class="file-upload-content">
             <h3 style="margin-bottom: 1rem; text-align: center;">Enviar Documento</h3>
-            <div class="file-drop-zone" id="fileDropZone" onclick="document.getElementById('fileInput').click()">
+            <div class="file-drop-zone" id="fileDropZone">
                 <div style="font-size: 3rem; margin-bottom: 1rem;">📄</div>
                 <p style="font-weight: 600; margin-bottom: 0.5rem;">Clique para selecionar ou arraste um arquivo</p>
                 <p style="color: #6b7280; font-size: 0.875rem;">PDF, DOC, DOCX, TXT, CSV, XLSX</p>
             </div>
-            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx" onchange="handleFileSelection(this)">
+            <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.csv,.xlsx">
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                <button onclick="closeFileModal()" style="flex: 1; padding: 0.75rem; border: 1px solid #d1d5db; background: white; border-radius: 8px; cursor: pointer;">Cancelar</button>
-                <button id="uploadButton" onclick="uploadSelectedFile()" style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer;" disabled>Enviar</button>
+                <button id="cancelUpload" style="flex: 1; padding: 0.75rem; border: 1px solid #d1d5db; background: white; border-radius: 8px; cursor: pointer;">Cancelar</button>
+                <button id="uploadButton" style="flex: 1; padding: 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 8px; cursor: pointer;" disabled>Enviar</button>
             </div>
         </div>
     </div>
@@ -841,11 +840,11 @@
                     <span>⚙️</span>
                     Admin
                 </a>
-                <button class="new-chat-btn" onclick="startNewChat()">
+                <button class="new-chat-btn" id="newChatBtn">
                     <span>+</span>
                     Nova Conversa
                 </button>
-                <button class="logout-btn" onclick="logout()">
+                <button class="logout-btn" id="logoutBtn">
                     Sair
                 </button>
             </div>
@@ -867,22 +866,22 @@
                     <div class="help-text">Como posso ajudar você hoje?</div>
                     
                     <div class="features-grid">
-                        <div class="feature-card" onclick="startChatWithPrompt('Preciso de ajuda para estruturar uma metodologia de pesquisa')">
+                        <div class="feature-card" data-prompt="Preciso de ajuda para estruturar uma metodologia de pesquisa">
                             <div class="feature-icon" style="background: #eff6ff; color: #3b82f6;">📝</div>
                             <h3 class="feature-title">Suporte à Pesquisa</h3>
                             <p class="feature-description">Auxílio na estruturação de metodologias, revisão de literatura e organização de ideias</p>
                         </div>
-                        <div class="feature-card" onclick="startChatWithPrompt('Preciso escrever um relatório técnico')">
+                        <div class="feature-card" data-prompt="Preciso escrever um relatório técnico">
                             <div class="feature-icon" style="background: #f0fdf4; color: #22c55e;">📄</div>
                             <h3 class="feature-title">Redação Técnica</h3>
                             <p class="feature-description">Auxílio na elaboração de relatórios, artigos e documentação técnica</p>
                         </div>
-                        <div class="feature-card" onclick="startChatWithPrompt('Preciso interpretar alguns dados e resultados')">
+                        <div class="feature-card" data-prompt="Preciso interpretar alguns dados e resultados">
                             <div class="feature-icon" style="background: #fef3f2; color: #ef4444;">📊</div>
                             <h3 class="feature-title">Interpretação de Dados</h3>
                             <p class="feature-description">Auxílio na interpretação de resultados e sugestões de análises estatísticas</p>
                         </div>
-                        <div class="feature-card" onclick="startChatWithPrompt('Tenho dúvidas sobre tecnologias para meu projeto')">
+                        <div class="feature-card" data-prompt="Tenho dúvidas sobre tecnologias para meu projeto">
                             <div class="feature-icon" style="background: #fefbeb; color: #f59e0b;">💡</div>
                             <h3 class="feature-title">Consultoria Tecnológica</h3>
                             <p class="feature-description">Orientação sobre tecnologias, ferramentas e melhores práticas para projetos</p>
@@ -910,16 +909,14 @@
                 <!-- Caixa de Input - SEMPRE VISÍVEL -->
                 <div class="input-container">
                     <div class="input-wrapper">
-                        <button class="upload-button" onclick="showFileModal()">+</button>
+                        <button class="upload-button" id="showUploadBtn">+</button>
                         <textarea 
                             class="message-input" 
                             id="messageInput" 
                             placeholder="Como posso ajudar você hoje?"
                             rows="1"
-                            onkeydown="handleKeyDown(event)"
-                            oninput="autoResize(this)"
                         ></textarea>
-                        <button class="send-button" id="sendButton" onclick="sendMessage()">➤</button>
+                        <button class="send-button" id="sendButton">➤</button>
                     </div>
                 </div>
             </main>
@@ -927,6 +924,7 @@
     </div>
 
     <script>
+        // Variáveis globais
         let currentChatId = null;
         let messageHistory = [];
         let userInfo = null;
@@ -934,11 +932,64 @@
         let selectedFile = null;
         let currentDocumentContext = null;
 
-        // Verificar autenticação ao carregar
+        // Inicialização
         document.addEventListener('DOMContentLoaded', function() {
+            initializeApp();
+        });
+
+        function initializeApp() {
             checkAuthentication();
             updateGreeting();
-        });
+            setupEventListeners();
+        }
+
+        function setupEventListeners() {
+            // Login
+            document.getElementById('emailInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    login();
+                }
+            });
+            document.getElementById('loginButton').addEventListener('click', login);
+
+            // Main app
+            document.getElementById('newChatBtn').addEventListener('click', startNewChat);
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            document.getElementById('sendButton').addEventListener('click', sendMessage);
+            document.getElementById('showUploadBtn').addEventListener('click', showFileModal);
+
+            // Message input
+            document.getElementById('messageInput').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+            document.getElementById('messageInput').addEventListener('input', function() {
+                this.style.height = 'auto';
+                this.style.height = this.scrollHeight + 'px';
+            });
+
+            // Upload modal
+            document.getElementById('fileDropZone').addEventListener('click', function() {
+                document.getElementById('fileInput').click();
+            });
+            document.getElementById('fileInput').addEventListener('change', handleFileSelection);
+            document.getElementById('cancelUpload').addEventListener('click', closeFileModal);
+            document.getElementById('uploadButton').addEventListener('click', uploadSelectedFile);
+
+            // Feature cards
+            document.querySelectorAll('.feature-card').forEach(card => {
+                card.addEventListener('click', function() {
+                    const prompt = this.getAttribute('data-prompt');
+                    startChatWithPrompt(prompt);
+                });
+            });
+
+            // Drag and drop
+            setupDragAndDrop();
+        }
 
         async function checkAuthentication() {
             try {
@@ -968,7 +1019,6 @@
             
             console.log('Showing main app. User info:', userInfo);
             
-            // Mostrar botão admin se for admin
             if (userInfo && userInfo.is_admin === true) {
                 const adminPanel = document.getElementById('adminPanel');
                 const adminButton = document.getElementById('adminButton');
@@ -979,18 +1029,9 @@
                 
                 console.log('Admin controls shown');
                 loadCosts();
-            } else {
-                console.log('User is not admin:', userInfo.is_admin);
             }
             
             loadChatHistory();
-        }
-
-        function handleLoginKeyDown(event) {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                login();
-            }
         }
 
         async function login() {
@@ -1015,11 +1056,9 @@
                 });
 
                 const data = await response.json();
-                console.log('Login response:', data);
 
                 if (data.success) {
                     userInfo = { email: email, is_admin: data.is_admin };
-                    console.log('Login successful. User info set to:', userInfo);
                     showMainApp();
                 } else {
                     showAlert(data.message, 'error');
@@ -1061,28 +1100,18 @@
         }
 
         async function loadCosts() {
-            if (!userInfo || !userInfo.is_admin) {
-                console.log('Not loading costs - user is not admin');
-                return;
-            }
-            
-            console.log('Loading costs for admin user');
+            if (!userInfo || !userInfo.is_admin) return;
             
             try {
                 const response = await fetch('/api/costs');
-                console.log('Costs response status:', response.status);
-                
                 if (response.ok) {
                     const costs = await response.json();
-                    console.log('Costs data:', costs);
                     document.getElementById('adminCostText').textContent = 
                         `Admin: Custo mensal: R$ ${costs.total.toFixed(2)} | Perguntas: ${costs.questions} | Orçamento usado: ${costs.budget_used.toFixed(1)}%`;
                 } else {
-                    console.error('Failed to load costs:', response.status, await response.text());
                     document.getElementById('adminCostText').textContent = 'Admin: Erro ao carregar custos';
                 }
             } catch (error) {
-                console.error('Erro ao carregar custos:', error);
                 document.getElementById('adminCostText').textContent = 'Admin: Erro de conexão';
             }
         }
@@ -1098,7 +1127,7 @@
                     chats.forEach(chat => {
                         const chatItem = document.createElement('li');
                         chatItem.className = 'chat-item';
-                        chatItem.onclick = () => loadChat(chat.chat_id);
+                        chatItem.addEventListener('click', () => loadChat(chat.chat_id));
                         
                         const title = document.createElement('div');
                         title.style.fontWeight = '500';
@@ -1131,14 +1160,12 @@
                     const messages = await response.json();
                     currentChatId = chatId;
                     
-                    // Esconder welcome screen
                     document.getElementById('welcomeScreen').style.display = 'none';
                     document.getElementById('chatArea').style.display = 'flex';
                     
                     const container = document.getElementById('messagesContainer');
                     container.innerHTML = '';
                     
-                    // Verificar se há documento neste chat
                     checkDocumentContext(chatId);
                     
                     messages.forEach(msg => {
@@ -1148,16 +1175,11 @@
                     isFirstInteraction = messages.length === 0;
                     updateInputPlaceholder();
                     
-                    // Remover classe active de outros chats
                     document.querySelectorAll('.chat-item').forEach(item => {
                         item.classList.remove('active');
                     });
                     
-                    // Adicionar classe active ao chat atual
-                    const currentChatElement = document.querySelector(`[onclick="loadChat('${chatId}')"]`);
-                    if (currentChatElement) {
-                        currentChatElement.classList.add('active');
-                    }
+                    document.querySelector(`[data-chat-id="${chatId}"]`)?.classList.add('active');
                 }
             } catch (error) {
                 console.error('Erro ao carregar chat:', error);
@@ -1178,20 +1200,17 @@
                     }
                 }
             } catch (error) {
-                console.log('No document context found for this chat');
                 currentDocumentContext = null;
                 hideDocumentIndicator();
             }
         }
 
         function showDocumentIndicator(filename) {
-            // Remover indicador existente se houver
             const existingIndicator = document.querySelector('.document-indicator');
             if (existingIndicator) {
                 existingIndicator.remove();
             }
             
-            // Criar novo indicador
             const indicator = document.createElement('div');
             indicator.className = 'document-indicator';
             indicator.innerHTML = `
@@ -1199,7 +1218,6 @@
                 <span>Documento carregado: <strong>${filename}</strong></span>
             `;
             
-            // Inserir no início do container de mensagens
             const messagesContainer = document.getElementById('messagesContainer');
             messagesContainer.insertBefore(indicator, messagesContainer.firstChild);
         }
@@ -1236,19 +1254,7 @@
             }
         }
 
-        function autoResize(textarea) {
-            textarea.style.height = 'auto';
-            textarea.style.height = textarea.scrollHeight + 'px';
-        }
-
-        function handleKeyDown(event) {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                sendMessage();
-            }
-        }
-
-        // Funções de Upload - CORRIGIDAS
+        // Upload functions - CORRIGIDAS
         function showFileModal() {
             document.getElementById('fileUploadModal').classList.add('show');
         }
@@ -1260,14 +1266,12 @@
             document.getElementById('fileInput').value = '';
         }
 
-        function handleFileSelection(input) {
-            console.log('handleFileSelection chamada');
-            console.log('input.files:', input.files);
-            
-            if (input.files && input.files.length > 0) {
-                selectedFile = input.files[0];
-                console.log('Arquivo selecionado:', selectedFile.name);
+        function handleFileSelection(event) {
+            const files = event.target.files;
+            if (files && files.length > 0) {
+                selectedFile = files[0];
                 document.getElementById('uploadButton').disabled = false;
+                console.log('Arquivo selecionado:', selectedFile.name);
             } else {
                 selectedFile = null;
                 document.getElementById('uploadButton').disabled = true;
@@ -1275,19 +1279,17 @@
         }
 
         async function uploadSelectedFile() {
-            console.log('uploadSelectedFile chamada');
-            console.log('selectedFile no início:', selectedFile);
+            console.log('uploadSelectedFile iniciado');
+            console.log('selectedFile:', selectedFile);
             
             if (!selectedFile) {
                 alert('Nenhum arquivo selecionado. Tente novamente.');
                 return;
             }
             
-            // CRÍTICO: Salvar arquivo antes de fechar modal
+            // CRÍTICO: Salvar arquivo ANTES de fechar modal
             const fileToUpload = selectedFile;
             const fileName = selectedFile.name;
-            
-            console.log('Arquivo salvo para upload:', fileName);
             
             const formData = new FormData();
             formData.append('file', fileToUpload);
@@ -1299,7 +1301,7 @@
                 startNewChat();
             }
             
-            // Mostrar mensagem de upload
+            // Usar nome salvo, não selectedFile.name
             addMessage(`📄 Enviando documento: ${fileName}...`, 'assistant');
             
             try {
@@ -1314,7 +1316,6 @@
                     currentChatId = data.chat_id;
                     addMessage(data.message, 'assistant');
                     
-                    // Atualizar contexto do documento
                     currentDocumentContext = {
                         has_document: true,
                         filename: data.filename
@@ -1322,7 +1323,7 @@
                     
                     showDocumentIndicator(data.filename);
                     updateInputPlaceholder();
-                    loadChatHistory(); // Recarregar histórico
+                    loadChatHistory();
                 } else {
                     addMessage('Erro ao processar documento.', 'assistant');
                 }
@@ -1332,13 +1333,39 @@
             }
         }
 
+        function setupDragAndDrop() {
+            const fileDropZone = document.getElementById('fileDropZone');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                fileDropZone.addEventListener(eventName, function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                fileDropZone.addEventListener(eventName, () => fileDropZone.classList.add('drag-over'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                fileDropZone.addEventListener(eventName, () => fileDropZone.classList.remove('drag-over'), false);
+            });
+
+            fileDropZone.addEventListener('drop', (e) => {
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    selectedFile = files[0];
+                    document.getElementById('uploadButton').disabled = false;
+                }
+            });
+        }
+
         function startNewChat() {
             currentChatId = null;
             messageHistory = [];
             isFirstInteraction = true;
             currentDocumentContext = null;
             
-            // Esconder welcome screen e mostrar chat area
             document.getElementById('welcomeScreen').style.display = 'none';
             document.getElementById('chatArea').style.display = 'flex';
             document.getElementById('messagesContainer').innerHTML = '';
@@ -1347,7 +1374,6 @@
             updateInputPlaceholder();
             document.getElementById('messageInput').focus();
             
-            // Remover seleção de outros chats
             document.querySelectorAll('.chat-item').forEach(item => {
                 item.classList.remove('active');
             });
@@ -1367,12 +1393,10 @@
             
             if (!message) return;
 
-            // Adicionar mensagem do usuário
             addMessage(message, 'user');
             input.value = '';
             input.style.height = 'auto';
             
-            // Esconder welcome screen se ainda estiver visível
             if (document.getElementById('welcomeScreen').style.display !== 'none') {
                 document.getElementById('welcomeScreen').style.display = 'none';
                 document.getElementById('chatArea').style.display = 'flex';
@@ -1383,7 +1407,6 @@
                 updateInputPlaceholder();
             }
 
-            // Mostrar indicador de carregamento
             showLoading();
 
             try {
@@ -1405,10 +1428,9 @@
                     
                     if (!currentChatId) {
                         currentChatId = data.chat_id;
-                        loadChatHistory(); // Recarregar histórico
+                        loadChatHistory();
                     }
                     
-                    // Atualizar custos se for admin
                     if (userInfo && userInfo.is_admin) {
                         loadCosts();
                     }
@@ -1462,34 +1484,6 @@
             document.getElementById('loadingIndicator').classList.remove('show');
             document.getElementById('sendButton').disabled = false;
         }
-
-        // Drag and drop para upload
-        const fileDropZone = document.getElementById('fileDropZone');
-        
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            fileDropZone.addEventListener(eventName, preventDefaults, false);
-        });
-
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-
-        ['dragenter', 'dragover'].forEach(eventName => {
-            fileDropZone.addEventListener(eventName, () => fileDropZone.classList.add('drag-over'), false);
-        });
-
-        ['dragleave', 'drop'].forEach(eventName => {
-            fileDropZone.addEventListener(eventName, () => fileDropZone.classList.remove('drag-over'), false);
-        });
-
-        fileDropZone.addEventListener('drop', (e) => {
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                selectedFile = files[0];
-                document.getElementById('uploadButton').disabled = false;
-            }
-        });
     </script>
 </body>
 </html>
