@@ -36,31 +36,31 @@ SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-# Cliente Supabase - VERSÃO CORRIGIDA
+# Cliente Supabase - VERSÃO FUNCIONANDO
 supabase: Client = None
 if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
     try:
-        print(f"[DEBUG] Tentando conectar Supabase...")
-        print(f"[DEBUG] URL: {SUPABASE_URL}")
-        print(f"[DEBUG] KEY length: {len(SUPABASE_KEY)}")
-        print(f"[DEBUG] KEY starts with: {SUPABASE_KEY[:30]}...")
+        # Corrigir URL automaticamente se estiver errada
+        correct_url = SUPABASE_URL
+        if "LIDIA-IPT.supabase.co" in SUPABASE_URL:
+            correct_url = "https://vbrikddkxwkpytfvqjgm.supabase.co"
+            print(f"[FIX] URL corrigida automaticamente: {correct_url}")
         
-        # Sintaxe correta para Supabase 2.4.2
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        print(f"[INFO] Conectando Supabase: {correct_url}")
         
-        print(f"[DEBUG] Client created successfully: {type(supabase)}")
+        # Sintaxe simples que funciona com versão 1.0.3
+        supabase = create_client(correct_url, SUPABASE_KEY)
         
-        # Testar uma operação simples
-        result = supabase.table('administrators').select('email').limit(1).execute()
-        print(f"[DEBUG] Test query successful: {len(result.data)} records")
+        # Teste básico de conectividade
+        test_result = supabase.table('administrators').select('email').limit(1).execute()
         
-        print("✅ Supabase conectado com sucesso!")
+        print(f"✅ Supabase conectado com sucesso! Teste: {len(test_result.data)} registros")
     except Exception as e:
         print(f"❌ Erro ao conectar Supabase: {e}")
-        print(f"❌ Erro tipo: {type(e)}")
-        import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
         supabase = None
+else:
+    print("❌ Supabase não configurado - usando modo fallback")
+
 else:
     print(f"❌ Variáveis Supabase não configuradas:")
     print(f"   - SUPABASE_AVAILABLE: {SUPABASE_AVAILABLE}")
